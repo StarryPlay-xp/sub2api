@@ -9,6 +9,9 @@ const appStoreMocks = vi.hoisted(() => ({
   showError: vi.fn(),
 }))
 
+const egressMocks = vi.hoisted(() => ({ exitSummaries: vi.fn(), attempts: vi.fn() }))
+vi.mock('@/api/admin/wireguard', () => egressMocks)
+
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
 vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
@@ -145,6 +148,19 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('renders personal usage IPs without calling administrator APIs or showing an admin detail button', () => {
+    egressMocks.exitSummaries.mockClear()
+    egressMocks.attempts.mockClear()
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, account_id: 7, exit_ip: { ips: ['203.0.113.9'], recorded: true, unobserved: false, expired: false } }], columns: [{ key: 'egress', label: 'Exit IP' }], egressMode: 'user' },
+      global: { stubs: { DataTable: { props: ['data'], template: '<div><slot v-for="row in data" name="cell-egress" :row="row" /></div>' }, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.text()).toContain('203.0.113.9')
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(egressMocks.exitSummaries).not.toHaveBeenCalled()
+    expect(egressMocks.attempts).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('shows output TPS in the latency cell using total duration', () => {
     const row = { ...baseImageRow, image_count: 0, billing_mode: 'token', output_tokens: 1000, duration_ms: 20_000, first_token_ms: 10_000 }
     const wrapper = mount(UsageTable, {

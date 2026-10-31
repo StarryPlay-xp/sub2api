@@ -184,6 +184,7 @@
           :server-side-sort="true"
           :show-account-billing="false"
           :show-upstream-endpoint="false"
+          egress-mode="user"
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
@@ -727,6 +728,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
+  { key: 'egress', label: t('wireguard.exitIP'), sortable: false },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
 ])
 

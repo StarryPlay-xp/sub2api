@@ -259,7 +259,18 @@
         </template>
 
         <template #cell-egress="{ row }">
-          <EgressEvidenceButton v-if="row.request_id" :request-id="row.request_id" />
+          <span v-if="egressMode === 'user'" class="text-xs text-gray-600 dark:text-gray-300">
+            <ExitIPValue :summary="row.exit_ip" :error="!row.exit_ip" />
+          </span>
+          <EgressEvidenceButton
+            v-else-if="row.request_id"
+            :request-id="row.request_id"
+            :account-id="row.account_id"
+            show-summary
+            :summary="egressSummaries[egressSummaryKey(row.request_id, row.account_id)]"
+            :summary-loading="egressLoading"
+            :summary-error="egressError"
+          />
           <span v-else>—</span>
         </template>
         <template #cell-request_id="{ row }">
@@ -540,6 +551,8 @@
 
 <script setup lang="ts">
 import EgressEvidenceButton from '@/components/admin/proxy/EgressEvidenceButton.vue'
+import ExitIPValue from '@/components/common/ExitIPValue.vue'
+import { egressSummaryKey, useEgressSummaries } from '@/composables/useEgressSummaries'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -604,6 +617,7 @@ interface Props {
   defaultSortOrder?: 'asc' | 'desc'
   showAccountBilling?: boolean
   showUpstreamEndpoint?: boolean
+  egressMode?: 'admin' | 'user'
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
 }
@@ -615,6 +629,7 @@ const props = withDefaults(defineProps<Props>(), {
   defaultSortOrder: 'asc',
   showAccountBilling: true,
   showUpstreamEndpoint: true,
+  egressMode: 'admin',
   flat: false
 })
 const emit = defineEmits<{
@@ -628,6 +643,10 @@ const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
+const { summaries: egressSummaries, loading: egressLoading, error: egressError } = useEgressSummaries(
+  () => props.data,
+  () => props.egressMode === 'admin' && props.columns.some(col => col.key === 'egress'),
+)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 

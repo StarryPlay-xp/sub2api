@@ -3,6 +3,9 @@ export interface ExitEvidence { ip?: string; source: string; family: string; obs
 export interface WGNode { id: number; name: string; config_version: number; active: boolean; paused: boolean; pause_reason?: string; expires_at?: string; tx_bytes: string; rx_bytes: string; saved_at?: string; incomplete: boolean; metric_basis: string }
 export interface WGDetails { node: WGNode; rate: { tx_bytes_per_second: number; rx_bytes_per_second: number; state: string; sampled_at: string }; history: { start: string; tx_bytes: string; rx_bytes: string }[]; observations: ExitEvidence[]; dropped_attempt_records: number }
 export interface EgressAttempt { attempt_id: string; account_id: number; started_at: string; finished_at: string; outcome: string; snapshot: { route: string; node_id?: number; config_version?: number; runtime_id?: string; family: string; connection_reused: boolean; evidence: ExitEvidence } }
+export interface EgressQuery { request_id: string; account_id: number }
+export interface EgressSummary extends EgressQuery { ips: string[]; recorded: boolean; unobserved: boolean; expired: boolean }
+export async function exitSummaries(requests: EgressQuery[], signal?: AbortSignal) { return (await apiClient.post<EgressSummary[]>('/admin/proxies/egress-summaries', { requests }, { signal })).data }
 export interface WGInput { name: string; config: string; config_version?: number; expires_at: string | null }
 export async function capabilities() { return (await apiClient.get<{ key_configured: boolean }>('/admin/proxies/wireguard/capabilities')).data }
 export async function details(id: number, interval: string, signal?: AbortSignal) { return (await apiClient.get<WGDetails>(`/admin/proxies/${id}/wireguard`, { params: { interval }, signal })).data }
