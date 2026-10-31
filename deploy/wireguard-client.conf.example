@@ -1,0 +1,16 @@
+# Sub2API 应用内 WG 客户端模板；替换占位符后粘贴到“添加 WireGuard”。
+# Address 必须使用出口服务器分配给此客户端的隧道地址。
+# 私钥只放在客户端；服务器应登记对应的客户端公钥。
+[Interface]
+PrivateKey = <CLIENT_PRIVATE_KEY_BASE64>
+Address = 10.66.66.2/32
+DNS = 1.1.1.1
+MTU = 1280
+
+[Peer]
+PublicKey = <SERVER_PUBLIC_KEY_BASE64>
+Endpoint = wg.example.com:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+# 仅当服务器为此 Peer 配置了预共享密钥时填写，并取消下一行的注释：
+# PresharedKey = <PRESHARED_KEY_BASE64>

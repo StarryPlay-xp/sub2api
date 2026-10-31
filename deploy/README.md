@@ -1,6 +1,9 @@
 # Sub2API Deployment Files
+> Last updated: 2026-10-31
 
 This directory contains files for deploying Sub2API on Linux servers and Apple-silicon Macs.
+
+Optional account-specific WireGuard egress: [deployment and verification guide (Chinese)](WIREGUARD_CN.md).
 
 ## Deployment Methods
 
