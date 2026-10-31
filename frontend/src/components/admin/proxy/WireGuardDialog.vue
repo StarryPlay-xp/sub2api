@@ -11,20 +11,21 @@
           <button class="btn btn-secondary" :disabled="busy || data.node.paused || !data.node.active" @click="verify('ipv4')">{{ t('wireguard.probe4') }}</button>
           <button class="btn btn-secondary" :disabled="busy || data.node.paused || !data.node.active" @click="verify('ipv6')">{{ t('wireguard.probe6') }}</button>
         </div>
-        <p class="text-sm text-gray-500">{{ t('wireguard.failureHint') }}</p>
-        <div class="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
-          <div><div class="text-xs text-gray-500">{{ t('wireguard.sent') }}</div><strong>{{ bytes(data.node.tx_bytes) }}</strong><div class="text-sm">{{ rate(data.rate.tx_bytes_per_second) }}</div></div>
-          <div><div class="text-xs text-gray-500">{{ t('wireguard.received') }}</div><strong>{{ bytes(data.node.rx_bytes) }}</strong><div class="text-sm">{{ rate(data.rate.rx_bytes_per_second) }}</div></div>
-          <p class="col-span-2 text-xs text-gray-500">{{ t('wireguard.saved') }}: {{ date(data.node.saved_at) }} · {{ t(data.rate.state === 'not_running' ? 'wireguard.notRunning' : 'wireguard.running') }}</p>
-        </div>
-        <p class="text-xs text-gray-500">{{ t('wireguard.basis') }}</p>
-        <p v-if="data.node.incomplete" role="status" class="text-sm text-amber-600">{{ t('wireguard.incomplete') }}</p>
-        <p v-if="data.dropped_attempt_records" class="text-sm text-amber-600">{{ t('wireguard.telemetryGap') }}</p>
-        <div class="space-y-2">
-          <label class="input-label" for="wg-history">{{ t('wireguard.history') }}</label>
-          <select id="wg-history" v-model="interval" class="input" @change="refresh"><option value="minute">{{ t('wireguard.minute') }}</option><option value="hour">{{ t('wireguard.hour') }}</option></select>
-          <div class="h-44"><Line v-if="data.history.length" :data="chartData" :options="chartOptions" /></div>
-        </div>
+        <p class="flex items-start gap-1.5 text-xs text-gray-500 dark:text-dark-400">
+          <Icon name="infoCircle" size="xs" class="mt-px h-3.5 w-3.5 shrink-0" />
+          {{ t('wireguard.failureHint') }}
+        </p>
+        <WireGuardTrafficPanel
+          :node="data.node"
+          :rate="data.rate"
+          :report="trafficReport"
+          :selected-range="selectedRange"
+          :loading="trafficLoading"
+          :error="trafficError"
+          :telemetry-gap="Boolean(data.dropped_attempt_records)"
+          :retained-from="trafficRetainedFrom"
+          @select="handleTrafficSelect"
+        />
         <div class="space-y-2">
           <h4 class="font-semibold">{{ t('wireguard.evidence') }}</h4>
           <p class="text-xs text-gray-500">{{ t('wireguard.evidenceHint') }}</p>
@@ -36,6 +37,21 @@
           </div>
         </div>
       </template>
+      <div v-else class="animate-pulse space-y-4" aria-hidden="true">
+        <div class="flex gap-2">
+          <div class="h-6 w-20 rounded-full bg-gray-200 dark:bg-dark-700"></div>
+          <div class="h-6 w-16 rounded-full bg-gray-200 dark:bg-dark-700"></div>
+        </div>
+        <div class="rounded-2xl border border-gray-200 p-4 dark:border-dark-700">
+          <div class="mb-3 h-4 w-28 rounded bg-gray-200 dark:bg-dark-700"></div>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
+            <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
+            <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
+          </div>
+          <div class="mt-3 h-48 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
+        </div>
+      </div>
       <form class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700" @submit.prevent="saveNode">
         <div><label for="wg-name" class="input-label">{{ t('wireguard.name') }}</label><input id="wg-name" v-model="name" class="input" required maxlength="100" /></div>
         <div><label for="wg-config" class="input-label">{{ t(id ? 'wireguard.replace' : 'wireguard.configuration') }}</label><textarea id="wg-config" v-model="configuration" class="input min-h-36 font-mono text-xs" :required="!id" maxlength="32768" autocomplete="off" autocapitalize="off" spellcheck="false" /><p class="mt-1 text-xs text-gray-500">{{ t('wireguard.configurationHint') }} {{ t('wireguard.peer') }}</p></div>
@@ -47,35 +63,101 @@
   </BaseDialog>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Line } from 'vue-chartjs'
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, type ChartOptions } from 'chart.js'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
+import WireGuardTrafficPanel from './WireGuardTrafficPanel.vue'
 import * as api from '@/api/admin/wireguard'
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 const props = defineProps<{ nodeId: number | null }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 const { t } = useI18n()
 const id = ref(props.nodeId), data = ref<api.WGDetails | null>(null)
 const name = ref(''), configuration = ref(''), expiry = ref(''), version = ref<number>()
-const keyConfigured = ref(true), busy = ref(false), saved = ref(false), error = ref(''), interval = ref('minute')
+const keyConfigured = ref(true), busy = ref(false), saved = ref(false), error = ref('')
+const selectedRange = ref<api.TrafficRange>('24h'), trafficReport = ref<api.TrafficReport | null>(null)
+const trafficSelection = ref<api.TrafficSelection>({ range: '24h' })
+const trafficError = ref(''), trafficLoading = ref(false), trafficRetainedFallback = ref('')
 const controller = new AbortController()
+let trafficController: AbortController | null = null
 let timer: ReturnType<typeof setTimeout> | undefined
-let disposed = false
+let trafficSeq = 0, lastTrafficAt = 0, disposed = false
+const TRAFFIC_REFRESH_MS = 15000
+const trafficRetainedFrom = computed(() => trafficReport.value?.interval === 'hour' ? trafficReport.value.retained_from : (trafficRetainedFallback.value || undefined))
 const date = (v?: string) => v ? new Date(v).toLocaleString() : '—'
-function bytes(v: string | number) { const n = Number(v); return n < 1024 ? `${n.toFixed(0)} B` : n < 1048576 ? `${(n / 1024).toFixed(2)} KiB` : n < 1073741824 ? `${(n / 1048576).toFixed(2)} MiB` : `${(n / 1073741824).toFixed(2)} GiB` }
-const rate = (n: number) => data.value?.rate.state === 'not_running' ? '—' : `${bytes(n)}/s`
-const chartData = computed(() => ({ labels: data.value?.history.map(b => date(b.start)) || [], datasets: [{ label: t('wireguard.sent'), data: data.value?.history.map(b => Number(b.tx_bytes) / 1024) || [], borderColor: '#2563eb', pointRadius: 0 }, { label: t('wireguard.received'), data: data.value?.history.map(b => Number(b.rx_bytes) / 1024) || [], borderColor: '#10b981', pointRadius: 0 }] }))
-const chartOptions: ChartOptions<'line'> = { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { beginAtZero: true, title: { display: true, text: 'KiB' } } } }
 function fillForm() { if (!data.value) return; name.value = data.value.node.name; version.value = data.value.node.config_version; const v = data.value.node.expires_at; expiry.value = v ? new Date(new Date(v).getTime() - new Date(v).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '' }
-async function refresh() { if (!id.value || disposed) return; data.value = await api.details(id.value, interval.value, controller.signal) }
+async function refresh() { if (!id.value || disposed) return; data.value = await api.details(id.value, 'minute', controller.signal) }
+function trafficMessage(e: unknown) {
+  const value = e as { status?: number; reason?: string; metadata?: { retained_from?: string } }
+  const retained = value.metadata?.retained_from ? new Date(value.metadata.retained_from).toLocaleString() : ''
+  switch (value.reason) {
+    case 'TRAFFIC_RANGE_INVALID': return t('wireguard.trafficRangeInvalid')
+    case 'TRAFFIC_INTERVAL_INVALID': return t('wireguard.trafficIntervalInvalid')
+    case 'TRAFFIC_DATE_INVALID': return t('wireguard.trafficDateInvalid')
+    case 'TRAFFIC_BOUNDARY_UNALIGNED': return t('wireguard.trafficBoundaryUnaligned')
+    case 'TRAFFIC_RETENTION_EXCEEDED': return retained ? t('wireguard.trafficRetentionExceeded', { date: retained }) : t('wireguard.trafficRetentionExceededGeneric')
+  }
+  if (value.status === 403) return t('wireguard.trafficForbidden')
+  if (value.status === 503) return t('wireguard.trafficUnavailable')
+  return t('wireguard.trafficLoadError')
+}
+async function loadTraffic(selection: api.TrafficSelection, reset: boolean) {
+  if (!id.value || disposed) return
+  const seq = ++trafficSeq
+  trafficController?.abort()
+  const requestController = new AbortController()
+  trafficController = requestController
+  trafficSelection.value = selection
+  selectedRange.value = selection.range
+  if (reset) { trafficReport.value = null; trafficError.value = '' }
+  trafficLoading.value = true
+  try {
+    const params: api.TrafficParams = { range: selection.range }
+    if (selection.range === 'custom') {
+      if (selection.start) params.start = selection.start
+      if (selection.end) params.end = selection.end
+    }
+    const result = await api.traffic(id.value, params, requestController.signal)
+    if (seq !== trafficSeq || requestController.signal.aborted || disposed) return
+    trafficReport.value = result
+    trafficError.value = ''
+    trafficRetainedFallback.value = ''
+  } catch (e) {
+    if (seq !== trafficSeq || requestController.signal.aborted || disposed) return
+    trafficReport.value = null
+    trafficError.value = trafficMessage(e)
+    const retained = (e as { metadata?: { retained_from?: string } }).metadata?.retained_from
+    if (selection.range === 'custom' && retained) trafficRetainedFallback.value = retained
+  } finally {
+    if (seq === trafficSeq) {
+      trafficLoading.value = false
+      // 失败也记录尝试时间，避免轮询在错误状态下每 2 秒重复请求。
+      lastTrafficAt = Date.now()
+    }
+  }
+}
+function handleTrafficSelect(selection: api.TrafficSelection) { void loadTraffic(selection, true) }
 function message(e: unknown) { const value = e as { response?: { data?: { message?: string } } }; return value.response?.data?.message || t('wireguard.error') }
 async function run(action: () => Promise<void>) { if (busy.value) return; busy.value = true; error.value = ''; try { await action() } catch (e) { if (!disposed) error.value = message(e) } finally { busy.value = false } }
-async function saveNode() { await run(async () => { const node = await api.save(id.value, { name: name.value, config: configuration.value, config_version: version.value, expires_at: expiry.value ? new Date(expiry.value).toISOString() : null }); configuration.value = ''; id.value = node.id; version.value = node.config_version; saved.value = true; await refresh(); fillForm(); emit('changed') }) }
+async function saveNode() { await run(async () => { const created = !id.value; const node = await api.save(id.value, { name: name.value, config: configuration.value, config_version: version.value, expires_at: expiry.value ? new Date(expiry.value).toISOString() : null }); configuration.value = ''; id.value = node.id; version.value = node.config_version; saved.value = true; await refresh(); fillForm(); if (created) await loadTraffic({ range: '24h' }, true); emit('changed') }) }
 async function changeState() { await run(async () => { if (!data.value || !id.value) return; await api.setPaused(id.value, data.value.node.config_version, !data.value.node.paused); await refresh(); fillForm(); emit('changed') }) }
 async function verify(family: string) { await run(async () => { if (!id.value) return; await api.probe(id.value, family); await refresh() }) }
-async function poll() { if (disposed) return; if (!busy.value) { try { await refresh() } catch { if (!disposed) error.value = t('wireguard.error') } } if (!disposed) timer = setTimeout(poll, 2000) }
-onMounted(async () => { await run(async () => { keyConfigured.value = (await api.capabilities()).key_configured; await refresh(); fillForm() }); if (!disposed) timer = setTimeout(poll, 2000) })
-onUnmounted(() => { disposed = true; configuration.value = ''; controller.abort(); if (timer) clearTimeout(timer) })
+async function poll() { if (disposed) return; if (!busy.value) { try { await refresh() } catch { if (!disposed) error.value = t('wireguard.error') } } if (!disposed && !trafficLoading.value && Date.now() - lastTrafficAt >= TRAFFIC_REFRESH_MS) { void loadTraffic(trafficSelection.value, false) } if (!disposed) timer = setTimeout(poll, 2000) }
+onMounted(async () => { await run(async () => { keyConfigured.value = (await api.capabilities()).key_configured; await refresh(); fillForm() }); if (id.value) await loadTraffic({ range: '24h' }, true); if (!disposed) timer = setTimeout(poll, 2000) })
+watch(() => props.nodeId, (value) => {
+  if (value === id.value) return
+  id.value = value
+  data.value = null
+  trafficReport.value = null
+  trafficError.value = ''
+  trafficRetainedFallback.value = ''
+  trafficSelection.value = { range: '24h' }
+  selectedRange.value = '24h'
+  trafficSeq++
+  trafficController?.abort()
+  if (!value) return
+  void run(async () => { await refresh(); fillForm() })
+  void loadTraffic({ range: '24h' }, true)
+})
+onUnmounted(() => { disposed = true; configuration.value = ''; controller.abort(); trafficController?.abort(); if (timer) clearTimeout(timer) })
 </script>
