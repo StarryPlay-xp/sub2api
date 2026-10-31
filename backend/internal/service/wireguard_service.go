@@ -16,6 +16,7 @@ type WireGuardRepository interface {
 	TrafficHistory(context.Context, int64, string) ([]wgtunnel.Bucket, error)
 	NodeObservations(context.Context, int64) ([]wgtunnel.Evidence, error)
 	ReadAttempts(context.Context, string) ([]egress.Attempt, error)
+	ReadExitSummaries(context.Context, []egress.AttemptQuery) ([]egress.ExitSummary, error)
 	PruneTrafficHistory(context.Context, time.Time) error
 }
 type WireGuardService struct {

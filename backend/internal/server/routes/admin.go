@@ -528,6 +528,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth
 		proxies.POST("/:id/wireguard/state", h.Admin.Proxy.SetWireGuardState)
 		proxies.POST("/:id/wireguard/probe", h.Admin.Proxy.ProbeWireGuard)
 		proxies.GET("/egress-attempts", h.Admin.Proxy.EgressAttempts)
+		proxies.POST("/egress-summaries", h.Admin.Proxy.EgressSummaries)
 		proxies.GET("", h.Admin.Proxy.List)
 		proxies.GET("/all", h.Admin.Proxy.GetAll)
 		// 代理导出泄露账号密码原文——要求 step-up 2FA

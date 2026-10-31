@@ -2,6 +2,7 @@ package admin
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -149,4 +150,30 @@ func (h *ProxyHandler) EgressAttempts(c *gin.Context) {
 		return
 	}
 	response.Success(c, attempts)
+}
+
+func (h *ProxyHandler) EgressSummaries(c *gin.Context) {
+	if !h.wireGuardAccess(c) {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	var input struct {
+		Requests []egress.AttemptQuery `json:"requests"`
+	}
+	if c.ShouldBindJSON(&input) != nil || len(input.Requests) == 0 || len(input.Requests) > 200 {
+		response.BadRequest(c, "Between 1 and 200 requests are required")
+		return
+	}
+	for _, q := range input.Requests {
+		if q.RequestID == "" || len(q.RequestID) > 128 || q.AccountID <= 0 {
+			response.BadRequest(c, "Valid request and account IDs are required")
+			return
+		}
+	}
+	summaries, err := h.wireguard.Store.ReadExitSummaries(c.Request.Context(), input.Requests)
+	if err != nil {
+		response.Error(c, 500, "Unable to read exit IPs")
+		return
+	}
+	response.Success(c, summaries)
 }

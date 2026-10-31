@@ -594,13 +594,21 @@ type BatchUpdateRedeemCodesRequest struct {
 }
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
+type UsageExitIP struct {
+	IPs        []string `json:"ips"`
+	Recorded   bool     `json:"recorded"`
+	Unobserved bool     `json:"unobserved"`
+	Expired    bool     `json:"expired"`
+}
+
 type UsageLog struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
-	RequestID string `json:"request_id"`
-	Model     string `json:"model"`
+	ExitIP    *UsageExitIP `json:"exit_ip,omitempty"`
+	ID        int64        `json:"id"`
+	UserID    int64        `json:"user_id"`
+	APIKeyID  int64        `json:"api_key_id"`
+	AccountID int64        `json:"account_id"`
+	RequestID string       `json:"request_id"`
+	Model     string       `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).

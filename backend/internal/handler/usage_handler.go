@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -50,6 +53,54 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
+	exitReader     usageExitReader
+}
+
+type usageExitReader interface {
+	ReadExitSummaries(context.Context, []egress.AttemptQuery) ([]egress.ExitSummary, error)
+}
+
+func NewUsageHandlerWithEgress(usageService *service.UsageService, apiKeyService *service.APIKeyService, opsService *service.OpsService, settingService *service.SettingService, wg *service.WireGuardService) *UsageHandler {
+	h := NewUsageHandler(usageService, apiKeyService, opsService, settingService)
+	if wg != nil {
+		h.exitReader = wg.Store
+	}
+	return h
+}
+
+// Queries are derived from already authorized usage rows, never client-supplied
+// request/account IDs. User responses expose IPs and observation status only.
+func (h *UsageHandler) fillExitIPs(ctx context.Context, userID int64, records []service.UsageLog, out []dto.UsageLog) {
+	if h.exitReader == nil {
+		return
+	}
+	queries := make([]egress.AttemptQuery, 0, len(records))
+	indices := make([]int, 0, len(records))
+	for i, record := range records {
+		if record.UserID != userID {
+			continue
+		}
+		out[i].ExitIP = &dto.UsageExitIP{IPs: []string{}}
+		if record.RequestID != "" && record.AccountID > 0 {
+			queries = append(queries, egress.AttemptQuery{RequestID: record.RequestID, AccountID: record.AccountID})
+			indices = append(indices, i)
+		}
+	}
+	if len(queries) == 0 {
+		return
+	}
+	values, err := h.exitReader.ReadExitSummaries(ctx, queries)
+	if err != nil || len(values) != len(queries) {
+		slog.WarnContext(ctx, "Unable to load user usage exit IPs")
+		for _, i := range indices {
+			out[i].ExitIP = nil
+		}
+		return
+	}
+	for j, i := range indices {
+		value := values[j]
+		out[i].ExitIP = &dto.UsageExitIP{IPs: value.IPs, Recorded: value.Recorded, Unobserved: value.Unobserved, Expired: value.Expired}
+	}
 }
 
 // NewUsageHandler creates a new UsageHandler
@@ -256,6 +307,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 	for i := range records {
 		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
 	}
+	h.fillExitIPs(c.Request.Context(), parsed.Filters.UserID, records, out)
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
 
@@ -400,7 +452,9 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language")))
+	out := []dto.UsageLog{*dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language"))}
+	h.fillExitIPs(c.Request.Context(), subject.UserID, []service.UsageLog{*record}, out)
+	response.Success(c, out[0])
 }
 
 // Stats handles getting usage statistics

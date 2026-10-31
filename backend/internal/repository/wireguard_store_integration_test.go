@@ -408,3 +408,41 @@ func TestEgressAttemptAliasesAndRetention(t *testing.T) {
 		t.Fatal("retention removed current evidence or retained old evidence", err)
 	}
 }
+
+func TestEgressSummariesBatchAccountIsolation(t *testing.T) {
+	store := &WireGuardStore{DB: wireguardTestDB(t)}
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for i, entry := range []struct {
+		account   int64
+		state, ip string
+	}{
+		{7, "observed", "203.0.113.9"},
+		{7, "observed", "203.0.113.9"},
+		{7, "unobserved", ""},
+		{7, "expired", "203.0.113.10"},
+		{8, "observed", "203.0.113.11"},
+	} {
+		a := egress.Attempt{ID: fmt.Sprint(i), RequestID: "raw", CorrelationIDs: []string{"local:alias"}, AccountID: entry.account, RouteKey: "direct:test", StartedAt: now, FinishedAt: now, Snapshot: egress.Snapshot{Evidence: wgtunnel.Evidence{State: entry.state, IP: entry.ip, ExpiresAt: now.Add(-time.Hour)}}, Outcome: "complete"}
+		if err := store.SaveAttempt(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := store.ReadExitSummaries(ctx, []egress.AttemptQuery{
+		{RequestID: "local:alias", AccountID: 7},
+		{RequestID: "raw", AccountID: 8},
+		{RequestID: "missing", AccountID: 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 3 || len(result[0].IPs) != 1 || result[0].IPs[0] != "203.0.113.9" || !result[0].Unobserved || !result[0].Expired {
+		t.Fatalf("invalid alias/dedup/state summary: %+v", result)
+	}
+	if len(result[1].IPs) != 1 || result[1].IPs[0] != "203.0.113.11" || result[1].Unobserved || result[1].Expired {
+		t.Fatalf("account snapshots were mixed: %+v", result[1])
+	}
+	if result[2].Recorded || len(result[2].IPs) != 0 {
+		t.Fatalf("missing request was fabricated: %+v", result[2])
+	}
+}

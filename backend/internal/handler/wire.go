@@ -240,7 +240,7 @@ var ProviderSet = wire.NewSet(
 	NewUserHandler,
 	NewMCPOAuthHandler,
 	NewAPIKeyHandler,
-	NewUsageHandler,
+	NewUsageHandlerWithEgress,
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,

@@ -90,3 +90,44 @@ func (s *WireGuardStore) ReadAttempts(ctx context.Context, requestID string) ([]
 	}
 	return result, rows.Err()
 }
+
+// ReadExitSummaries loads one page in a single query and keeps accounts separate
+// when retries or routing changes share the same request correlation ID.
+func (s *WireGuardStore) ReadExitSummaries(ctx context.Context, queries []egress.AttemptQuery) ([]egress.ExitSummary, error) {
+	result := make([]egress.ExitSummary, len(queries))
+	for i, q := range queries {
+		result[i] = egress.ExitSummary{AttemptQuery: q, IPs: []string{}}
+	}
+	if len(queries) == 0 {
+		return result, nil
+	}
+	data, err := json.Marshal(queries)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.DB.QueryContext(ctx, `
+		WITH requested AS (
+			SELECT ordinality - 1 AS idx, value->>'request_id' AS request_id,
+				(value->>'account_id')::bigint AS account_id
+			FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY
+		)
+		SELECT r.idx, COALESCE(a.snapshot->'evidence'->>'state',''),
+			COALESCE(a.snapshot->'evidence'->>'ip','')
+		FROM requested r JOIN upstream_egress_attempts a
+			ON (a.request_id=r.request_id OR a.correlation_ids ? r.request_id)
+			AND a.account_id=r.account_id
+		GROUP BY 1,2,3`, string(data))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i int
+		var state, ip string
+		if err = rows.Scan(&i, &state, &ip); err != nil {
+			return nil, err
+		}
+		result[i].Add(state, ip)
+	}
+	return result, rows.Err()
+}
