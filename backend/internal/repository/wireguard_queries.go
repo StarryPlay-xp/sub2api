@@ -5,8 +5,49 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
+	"math/big"
 	"strconv"
 )
+
+func (s *WireGuardStore) TrafficReport(ctx context.Context, id int64, window wgtunnel.TrafficWindow) (wgtunnel.TrafficReport, error) {
+	result := wgtunnel.TrafficReport{TrafficWindow: window, TX: "0", RX: "0", Total: "0", MetricBasis: wgtunnel.MetricBasis, History: []wgtunnel.Bucket{}}
+	query := `SELECT bucket_start,tx_bytes::text,rx_bytes::text FROM wireguard_traffic_hourly
+		WHERE proxy_id=$1 AND bucket_start >= $2 AND bucket_start < $3 ORDER BY bucket_start`
+	if window.Interval == "minute" {
+		query = `SELECT b.bucket_start,SUM(b.tx_bytes)::text,SUM(b.rx_bytes)::text
+			FROM wireguard_traffic_buckets b JOIN wireguard_traffic_runtimes r ON r.runtime_id=b.runtime_id
+			WHERE r.proxy_id=$1 AND b.bucket_start >= $2 AND b.bucket_start < $3
+			GROUP BY b.bucket_start ORDER BY b.bucket_start`
+	} else if window.Interval != "hour" {
+		return result, errors.New("invalid traffic interval")
+	}
+	rows, err := s.DB.QueryContext(ctx, query, id, window.Start, window.End)
+	if err != nil {
+		return result, err
+	}
+	defer rows.Close()
+	tx, rx := new(big.Int), new(big.Int)
+	for rows.Next() {
+		var bucket wgtunnel.Bucket
+		if err = rows.Scan(&bucket.Start, &bucket.TX, &bucket.RX); err != nil {
+			return result, err
+		}
+		result.History = append(result.History, bucket)
+		tx.Add(tx, new(big.Int).SetUint64(bucket.TX))
+		rx.Add(rx, new(big.Int).SetUint64(bucket.RX))
+	}
+	if err = rows.Err(); err != nil {
+		return result, err
+	}
+	result.TX, result.RX, result.Total = tx.String(), rx.String(), new(big.Int).Add(tx, rx).String()
+	result.BucketCount = len(result.History)
+	result.HasRecords = result.BucketCount > 0
+	if result.HasRecords {
+		result.FirstRecordAt = &result.History[0].Start
+		result.LastRecordAt = &result.History[result.BucketCount-1].Start
+	}
+	return result, nil
+}
 
 func (s *WireGuardStore) TrafficHistory(ctx context.Context, id int64, interval string) ([]wgtunnel.Bucket, error) {
 	query := `SELECT b.bucket_start,SUM(b.tx_bytes)::text,SUM(b.rx_bytes)::text FROM wireguard_traffic_buckets b JOIN wireguard_traffic_runtimes r ON r.runtime_id=b.runtime_id WHERE r.proxy_id=$1 AND b.bucket_start>=NOW()-INTERVAL '24 hours' GROUP BY b.bucket_start ORDER BY b.bucket_start`
