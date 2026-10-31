@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel/netstack"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
 var ErrBlocked = errors.New("WireGuard route unavailable; direct fallback prohibited")
@@ -25,6 +25,8 @@ type Runtime struct {
 	Counts      Counters
 	mu          sync.Mutex
 	closed      bool
+	closeOnce   sync.Once
+	operations  sync.WaitGroup
 	connections map[*trackedConn]struct{}
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -83,6 +85,10 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 }
 
 func (r *Runtime) Lookup(ctx context.Context, host string) ([]netip.Addr, error) {
+	if !r.beginOperation() {
+		return nil, ErrBlocked
+	}
+	defer r.operations.Done()
 	if r.ctx.Err() != nil {
 		return nil, ErrBlocked
 	}
@@ -114,6 +120,10 @@ func (r *Runtime) Lookup(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
 func (r *Runtime) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	if !r.beginOperation() {
+		return nil, ErrBlocked
+	}
+	defer r.operations.Done()
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
 		return nil, errors.New("unsupported WireGuard application network")
 	}
@@ -155,23 +165,40 @@ func (r *Runtime) DialContext(ctx context.Context, network, address string) (net
 	return nil, ErrBlocked
 }
 
-func (r *Runtime) Close() {
+// Serialize operation admission with revocation, so no endpoint can be created
+// after the stack shutdown has started.
+func (r *Runtime) beginOperation() bool {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.closed {
+		return false
+	}
+	r.operations.Add(1)
+	return true
+}
+
+// Every caller waits for I/O and counters to settle, including a concurrent
+// lease watchdog and manager retirement taking the final checkpoint.
+func (r *Runtime) Close() {
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		r.closed = true
+		r.cancel()
+		connections := make([]*trackedConn, 0, len(r.connections))
+		for c := range r.connections {
+			connections = append(connections, c)
+		}
 		r.mu.Unlock()
-		return
-	}
-	r.closed = true
-	r.cancel()
-	connections := make([]*trackedConn, 0, len(r.connections))
-	for c := range r.connections {
-		connections = append(connections, c)
-	}
-	r.mu.Unlock()
-	for _, c := range connections {
-		c.Close()
-	}
-	r.dev.Close()
+		// Down closes the UDP bind and joins peer send/receive workers while the
+		// TUN reader is still alive. Stack callbacks also require synchronized
+		// shutdown in our netstack adapter; Down alone cannot stop TCP timers.
+		_ = r.dev.Down()
+		r.operations.Wait()
+		for _, c := range connections {
+			c.Close()
+		}
+		r.dev.Close()
+	})
 }
 
 type trackedConn struct {
