@@ -20,6 +20,10 @@ import (
 )
 
 func wireguardTestDB(t *testing.T) *sql.DB {
+	return wireguardTestDBVersion(t, true)
+}
+
+func wireguardTestDBVersion(t *testing.T, upgraded bool) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("SUB2API_WG_TEST_DSN")
 	if dsn == "" {
@@ -65,7 +69,21 @@ func wireguardTestDB(t *testing.T) *sql.DB {
 	if _, e = isolated.Exec(`INSERT INTO proxies(id,name,protocol) VALUES(1,'test','wireguard'); INSERT INTO wireguard_nodes(proxy_id,config_ciphertext,public_summary) VALUES(1,'test-only','{}'); SELECT setval('proxies_id_seq',1);`); e != nil {
 		t.Fatal(e)
 	}
+	if upgraded {
+		applyWireGuardLifecycleMigration(t, isolated)
+	}
 	return isolated
+}
+
+func applyWireGuardLifecycleMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "252_wireguard_deleted_account_guard.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(string(migration)); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestWireGuardCheckpointIdempotencyAndRollover(t *testing.T) {
