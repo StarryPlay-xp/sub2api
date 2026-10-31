@@ -167,6 +167,7 @@ const props = withDefaults(defineProps<{
   platforms?: string[]
   accountId?: number
   syncCredentials?: {
+    proxy_id?: number | null
     platform: string
     type: string
     base_url?: string

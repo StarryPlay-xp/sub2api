@@ -1,3 +1,4 @@
+import wireguard from './wireguard'
 import adminAccessKeys from './adminAccessKeys'
 import mcp from './mcp'
 import landing from './landing'
@@ -9,6 +10,7 @@ import admin from './admin'
 import misc from './misc'
 
 export default {
+  wireguard,
   adminAccessKeys,
   mcp,
   ...landing,

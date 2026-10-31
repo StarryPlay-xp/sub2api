@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import EgressEvidenceButton from '@/components/admin/proxy/EgressEvidenceButton.vue'
 import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -244,6 +245,7 @@ function accountLabel(row: OpsRequestDetail): string {
                     <span>{{ row.status_code ?? '-' }}</span>
                   </div>
                   <div v-if="row.request_id" class="flex items-center gap-2">
+                    <EgressEvidenceButton :request-id="row.request_id" />
                     <span class="min-w-0 flex-1 truncate font-mono text-[11px] text-gray-700 dark:text-gray-200" :title="row.request_id">
                       {{ row.request_id }}
                     </span>
@@ -322,6 +324,7 @@ function accountLabel(row: OpsRequestDetail): string {
                   </td>
                   <td class="px-4 py-3">
                     <div v-if="row.request_id" class="flex items-center gap-2">
+                      <EgressEvidenceButton :request-id="row.request_id" />
                       <span class="max-w-[220px] truncate font-mono text-[11px] text-gray-700 dark:text-gray-200" :title="row.request_id">
                         {{ row.request_id }}
                       </span>

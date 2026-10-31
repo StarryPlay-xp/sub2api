@@ -645,6 +645,7 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
 }
 
 export interface SyncUpstreamPreviewParams {
+  proxy_id?: number | null
   platform: string
   type: string
   base_url?: string

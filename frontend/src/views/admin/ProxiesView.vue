@@ -37,7 +37,7 @@
           </div>
 
           <!-- Right: All action buttons -->
-          <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
+          <div class="flex w-full flex-wrap items-center justify-end gap-2">
             <button
               @click="loadProxies"
               :disabled="loading"
@@ -79,6 +79,7 @@
             <button @click="showExportDataDialog = true" class="btn btn-secondary">
               {{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') }}
             </button>
+            <button @click="openWireGuard(null)" class="btn btn-secondary">{{ t('wireguard.create') }}</button>
             <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') }}
@@ -135,7 +136,7 @@
           <template #cell-address="{ row }">
             <div class="flex items-center gap-1.5">
               <code class="code text-xs">{{ row.host }}:{{ row.port }}</code>
-              <div class="relative">
+              <div v-if="row.protocol !== 'wireguard'" class="relative">
                 <button
                   type="button"
                   class="rounded p-0.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
@@ -256,8 +257,10 @@
             <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
           </template>
 
-          <template #cell-status="{ value }">
+          <template #cell-status="{ value, row }">
+            <button v-if="row.protocol === 'wireguard'" class="text-sm text-primary-600" @click="openWireGuard(row.id)">{{ t('wireguard.viewState') }}</button>
             <span
+              v-else
               :class="[
                 'badge',
                 value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-danger' : 'badge-danger'
@@ -295,9 +298,10 @@
                   ></path>
                 </svg>
                 <Icon v-else name="checkCircle" size="sm" />
-                <span class="text-xs">{{ t('admin.proxies.testConnection') }}</span>
+                <span class="text-xs">{{ t(row.protocol === 'wireguard' ? 'wireguard.manage' : 'admin.proxies.testConnection') }}</span>
               </button>
               <button
+                v-if="row.protocol !== 'wireguard'"
                 @click="handleQualityCheck(row)"
                 :disabled="qualityCheckingProxyIds.has(row.id)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
@@ -916,6 +920,7 @@
       </template>
     </BaseDialog>
 
+    <WireGuardDialog v-if="showWireGuard" :node-id="wireGuardNodeID" @close="showWireGuard = false" @changed="loadProxies" />
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
       :show="showAccountsModal"
@@ -977,6 +982,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import WireGuardDialog from '@/components/admin/proxy/WireGuardDialog.vue'
 import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
@@ -989,6 +995,9 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 
+const showWireGuard = ref(false)
+const wireGuardNodeID = ref<number | null>(null)
+function openWireGuard(id: number | null) { wireGuardNodeID.value = id; showWireGuard.value = true }
 const { t } = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
@@ -1014,7 +1023,8 @@ const protocolOptions = computed(() => [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS' },
   { value: 'socks5', label: 'SOCKS5' },
-  { value: 'socks5h', label: 'SOCKS5H' }
+  { value: 'socks5h', label: 'SOCKS5H' },
+  { value: 'wireguard', label: 'WireGuard' }
 ])
 
 const statusOptions = computed(() => [
@@ -1154,7 +1164,7 @@ const loadBackupProxyOptions = async () => {
 }
 const backupProxyOptions = (excludeId?: number) =>
   allProxiesForBackup.value
-    .filter(p => p.id !== excludeId)
+    .filter(p => p.id !== excludeId && p.protocol !== 'wireguard')
     .map(p => ({ label: `${p.name} (${p.host}:${p.port})`, value: p.id }))
 
 let abortController: AbortController | null = null
@@ -1415,6 +1425,7 @@ const handleCreateProxy = async () => {
 }
 
 const handleEdit = (proxy: Proxy) => {
+  if (proxy.protocol === 'wireguard') { openWireGuard(proxy.id); return }
   editingProxy.value = proxy
   editForm.name = proxy.name
   editForm.protocol = proxy.protocol
@@ -1596,10 +1607,12 @@ const runProxyTest = async (proxyId: number, notify: boolean) => {
 }
 
 const handleTestConnection = async (proxy: Proxy) => {
+  if (proxy.protocol === 'wireguard') { openWireGuard(proxy.id); return }
   await runProxyTest(proxy.id, true)
 }
 
 const handleQualityCheck = async (proxy: Proxy) => {
+  if (proxy.protocol === 'wireguard') { openWireGuard(proxy.id); return }
   startQualityCheckingProxy(proxy.id)
   try {
     const result = await adminAPI.proxies.checkProxyQuality(proxy.id)
@@ -1852,13 +1865,11 @@ const handleBatchTest = async () => {
 
   batchTesting.value = true
   try {
-    let ids: number[] = []
-    if (selectedCount.value > 0) {
-      ids = Array.from(selectedProxyIds.value)
-    } else {
-      const allProxies = await fetchAllProxiesForBatch()
-      ids = allProxies.map((proxy) => proxy.id)
-    }
+    const allProxies = await fetchAllProxiesForBatch()
+    const ids = allProxies
+      .filter(proxy => proxy.protocol !== 'wireguard')
+      .filter(proxy => selectedCount.value === 0 || selectedProxyIds.value.has(proxy.id))
+      .map(proxy => proxy.id)
 
     if (ids.length === 0) {
       appStore.showInfo(t('admin.proxies.batchTestEmpty'))
@@ -1881,13 +1892,11 @@ const handleBatchQualityCheck = async () => {
 
   batchQualityChecking.value = true
   try {
-    let ids: number[] = []
-    if (selectedCount.value > 0) {
-      ids = Array.from(selectedProxyIds.value)
-    } else {
-      const allProxies = await fetchAllProxiesForBatch()
-      ids = allProxies.map((proxy) => proxy.id)
-    }
+    const allProxies = await fetchAllProxiesForBatch()
+    const ids = allProxies
+      .filter(proxy => proxy.protocol !== 'wireguard')
+      .filter(proxy => selectedCount.value === 0 || selectedProxyIds.value.has(proxy.id))
+      .map(proxy => proxy.id)
 
     if (ids.length === 0) {
       appStore.showInfo(t('admin.proxies.batchQualityEmpty'))

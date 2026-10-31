@@ -4610,6 +4610,7 @@ const syncPreviewCredentials = computed(() => {
     modelMappings.value
   )
   return {
+    proxy_id: form.proxy_id,
     platform: form.platform,
     type: form.type,
     base_url: baseUrl || undefined,

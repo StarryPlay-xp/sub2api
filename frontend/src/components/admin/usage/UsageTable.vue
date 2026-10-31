@@ -258,6 +258,10 @@
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
 
+        <template #cell-egress="{ row }">
+          <EgressEvidenceButton v-if="row.request_id" :request-id="row.request_id" />
+          <span v-else>—</span>
+        </template>
         <template #cell-request_id="{ row }">
           <div v-if="row.request_id" class="flex max-w-[160px] items-center gap-1.5">
             <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" :title="row.request_id">
@@ -535,6 +539,7 @@
 </template>
 
 <script setup lang="ts">
+import EgressEvidenceButton from '@/components/admin/proxy/EgressEvidenceButton.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
