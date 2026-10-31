@@ -979,6 +979,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 		input.AccountIDs = accountIDs
+		if input.ProxyID != nil {
+			ctx = resolveExplicitFilteredEgressEdit(ctx, accountIDs)
+		}
 	}
 
 	result := &BulkUpdateAccountsResult{

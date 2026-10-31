@@ -2360,7 +2360,11 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 
 	editCtx := c.Request.Context()
 	if req.ProxyID != nil {
-		editCtx = service.WithExplicitEgressEdit(editCtx, req.AccountIDs...)
+		if len(req.AccountIDs) == 0 && req.Filters != nil {
+			editCtx = service.WithExplicitFilteredEgressEdit(editCtx)
+		} else {
+			editCtx = service.WithExplicitEgressEdit(editCtx, req.AccountIDs...)
+		}
 	}
 	result, err := h.adminService.BulkUpdateAccounts(editCtx, &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
