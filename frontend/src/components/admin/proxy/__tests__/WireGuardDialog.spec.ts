@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('@/api/admin/wireguard', () => api)
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('vue-chartjs', () => ({ Line: { template: '<div data-testid="chart" />' } }))
+vi.mock('vue-chartjs', () => ({ Bar: { template: '<div data-testid="chart" />' } }))
 
 const data = (paused = false) => ({
   node: { id: 7, name: 'Node', config_version: 2, paused, active: true, tx_bytes: 32, rx_bytes: 64 },
@@ -80,6 +80,9 @@ describe('WireGuardDialog', () => {
   it('never prefills a configuration and clears it after a successful replacement', async () => {
     const wrapper = create()
     await flushPromises()
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="chart"]').exists()).toBe(true)
     const config = wrapper.get<HTMLTextAreaElement>('#wg-config')
     expect(config.element.value).toBe('')
     await config.setValue('synthetic private configuration')
