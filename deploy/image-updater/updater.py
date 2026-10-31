@@ -202,6 +202,16 @@ class Updater:
     def mounts(container):
         return sorted((m["Destination"], m["Type"], m["Source"], m["RW"]) for m in container["Mounts"])
 
+    @staticmethod
+    def service_host(app, dependency, host):
+        """Accept only DNS aliases of the inspected dependency on a shared network."""
+        app_networks = app.get("NetworkSettings", {}).get("Networks", {})
+        dependency_networks = dependency.get("NetworkSettings", {}).get("Networks", {})
+        return bool(host) and any(
+            host in (network.get("Aliases") or [])
+            for name, network in dependency_networks.items() if name in app_networks
+        )
+
     def preflight(self):
         app, postgres, redis = (self.container(s) for s in ("sub2api", "postgres", "redis"))
         if not all(c["State"]["Running"] for c in (app, postgres, redis)):
@@ -214,7 +224,7 @@ class Updater:
             if self.state_dir == source or source in self.state_dir.parents:
                 raise UpdateError("Updater backups must not be accessible from the application")
         env = dict(e.split("=", 1) for e in app["Config"]["Env"] if "=" in e)
-        if env.get("DATABASE_HOST") != "postgres" or env.get("REDIS_HOST") != "redis":
+        if not self.service_host(app, postgres, env.get("DATABASE_HOST")) or not self.service_host(app, redis, env.get("REDIS_HOST")):
             raise UpdateError("This updater requires the existing Compose PostgreSQL and Redis services")
         pg_env = dict(e.split("=", 1) for e in postgres["Config"]["Env"] if "=" in e)
         if env.get("DATABASE_DBNAME") != pg_env.get("POSTGRES_DB") or env.get("DATABASE_USER") != pg_env.get("POSTGRES_USER"):

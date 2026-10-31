@@ -163,6 +163,26 @@ class HostUpdaterTests(unittest.TestCase):
             with self.assertRaisesRegex(updater.UpdateError, "environment differs"):
                 updater.Updater.check_compose(self.host, self.app)
 
+    def test_existing_container_names_and_service_aliases_are_accepted(self):
+        app = {"NetworkSettings": {"Networks": {"existing-network": {}}}}
+        dependency = {"NetworkSettings": {"Networks": {"existing-network": {
+            "Aliases": ["sub2api-postgres", "postgres"]}}}}
+        for host in ["sub2api-postgres", "postgres"]:
+            self.assertTrue(updater.Updater.service_host(app, dependency, host))
+
+    def test_foreign_database_hosts_are_rejected(self):
+        app = {"NetworkSettings": {"Networks": {"existing-network": {}}}}
+        dependency = {"NetworkSettings": {"Networks": {"existing-network": {
+            "Aliases": ["sub2api-postgres", "postgres"]}}}}
+        for host in ["external.example", "another-postgres", "", None]:
+            self.assertFalse(updater.Updater.service_host(app, dependency, host))
+
+    def test_alias_on_unshared_network_is_rejected(self):
+        app = {"NetworkSettings": {"Networks": {"existing-network": {}}}}
+        dependency = {"NetworkSettings": {"Networks": {"another-network": {
+            "Aliases": ["postgres"]}}}}
+        self.assertFalse(updater.Updater.service_host(app, dependency, "postgres"))
+
 
 if __name__ == "__main__":
     unittest.main()
