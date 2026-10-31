@@ -91,6 +91,38 @@ func (h *ProxyHandler) GetWireGuard(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+
+func (h *ProxyHandler) WireGuardTraffic(c *gin.Context) {
+	if !h.wireGuardAccess(c) {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		response.BadRequest(c, "Invalid node")
+		return
+	}
+	window, err := wgtunnel.ResolveTrafficWindow(wgtunnel.TrafficQuery{
+		Range: c.Query("range"), Interval: c.Query("interval"), Start: c.Query("start"), End: c.Query("end"),
+	}, time.Now())
+	if err != nil {
+		if invalid, ok := err.(*wgtunnel.TrafficQueryError); ok {
+			metadata := map[string]string{}
+			if !window.RetainedFrom.IsZero() {
+				metadata["retained_from"] = window.RetainedFrom.Format(time.RFC3339)
+			}
+			response.ErrorWithDetails(c, http.StatusBadRequest, invalid.Message, invalid.Reason, metadata)
+			return
+		}
+		response.BadRequest(c, "Invalid traffic range")
+		return
+	}
+	result, err := h.wireguard.Traffic(c.Request.Context(), id, window)
+	if err != nil {
+		response.BadRequest(c, "Unable to read WireGuard traffic")
+		return
+	}
+	response.Success(c, result)
+}
 func (h *ProxyHandler) SetWireGuardState(c *gin.Context) {
 	if !h.wireGuardAccess(c) {
 		return

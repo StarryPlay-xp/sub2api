@@ -524,6 +524,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth
 		proxies.GET("wireguard/capabilities", h.Admin.Proxy.WireGuardCapabilities)
 		proxies.POST("/wireguard", h.Admin.Proxy.WriteWireGuard)
 		proxies.GET("/:id/wireguard", h.Admin.Proxy.GetWireGuard)
+		proxies.GET("/:id/wireguard/traffic", h.Admin.Proxy.WireGuardTraffic)
 		proxies.PUT("/:id/wireguard", h.Admin.Proxy.WriteWireGuard)
 		proxies.POST("/:id/wireguard/state", h.Admin.Proxy.SetWireGuardState)
 		proxies.POST("/:id/wireguard/probe", h.Admin.Proxy.ProbeWireGuard)

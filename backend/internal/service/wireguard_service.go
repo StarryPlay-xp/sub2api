@@ -14,6 +14,7 @@ type WireGuardRepository interface {
 	ReadNode(context.Context, int64) (wgtunnel.NodeView, error)
 	SetNodePaused(context.Context, int64, int64, bool) error
 	TrafficHistory(context.Context, int64, string) ([]wgtunnel.Bucket, error)
+	TrafficReport(context.Context, int64, wgtunnel.TrafficWindow) (wgtunnel.TrafficReport, error)
 	NodeObservations(context.Context, int64) ([]wgtunnel.Evidence, error)
 	ReadAttempts(context.Context, string) ([]egress.Attempt, error)
 	ReadExitSummaries(context.Context, []egress.AttemptQuery) ([]egress.ExitSummary, error)
@@ -96,6 +97,19 @@ type WireGuardDetails struct {
 	History         []wgtunnel.Bucket   `json:"history"`
 	Observations    []wgtunnel.Evidence `json:"observations"`
 	DroppedAttempts uint64              `json:"dropped_attempt_records"`
+}
+
+func (s *WireGuardService) Traffic(ctx context.Context, id int64, window wgtunnel.TrafficWindow) (wgtunnel.TrafficReport, error) {
+	node, err := s.Store.ReadNode(ctx, id)
+	if err != nil {
+		return wgtunnel.TrafficReport{}, err
+	}
+	result, err := s.Store.TrafficReport(ctx, id, window)
+	// An incomplete lifetime is conservatively reflected in every interval;
+	// missing samples cannot be reconstructed or silently treated as zero.
+	result.Incomplete = node.Incomplete
+	result.SavedAt = node.SavedAt
+	return result, err
 }
 
 func (s *WireGuardService) Details(ctx context.Context, id int64, interval string) (WireGuardDetails, error) {
