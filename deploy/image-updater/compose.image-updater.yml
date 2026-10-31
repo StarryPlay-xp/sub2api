@@ -1,0 +1,15 @@
+# Install beside the existing Compose file. Keep the original database/Redis
+# services, data mounts and secrets. Include the WG override as well if used.
+services:
+  sub2api:
+    stop_grace_period: 2m
+    environment:
+      SUB2API_DEPLOYMENT: docker
+      IMAGE_UPDATER_SOCKET: /run/sub2api-updater/updater.sock
+    volumes:
+      - type: bind
+        source: /run/sub2api-updater
+        target: /run/sub2api-updater
+        read_only: true
+        bind:
+          create_host_path: false

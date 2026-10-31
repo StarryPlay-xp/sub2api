@@ -114,8 +114,16 @@
                 </p>
               </div>
 
+              <ImageUpdatePanel
+                v-if="appStore.updateMode === 'image'"
+                :has-update="hasUpdate"
+                :latest-version="latestVersion"
+                :current-version="currentVersion"
+                @updated="refreshVersion(true)"
+              />
+
               <!-- Priority 1: Update error (must check before hasUpdate) -->
-              <div v-if="updateError" class="space-y-2">
+              <div v-else-if="updateError" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
                 >
@@ -650,10 +658,11 @@ import {
 } from '@/api/admin/system'
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
+import ImageUpdatePanel from './ImageUpdatePanel.vue'
 
-const GITHUB_REPO = 'Wei-Shaw/sub2api'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
-const DOCKER_IMAGE = 'weishaw/sub2api'
+const GITHUB_REPO = 'StarryPlay-xp/sub2api'
+// This fork's GHCR image uses version tags without the "v" prefix.
+const DOCKER_IMAGE = 'ghcr.io/starryplay-xp/sub2api'
 
 const { t } = useI18n()
 

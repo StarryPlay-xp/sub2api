@@ -18,6 +18,7 @@ export interface VersionInfo {
   release_info?: ReleaseInfo
   cached: boolean
   warning?: string
+  update_mode?: 'binary' | 'image'
   build_type: string // "source" for manual builds, "release" for CI builds
 }
 
@@ -111,3 +112,21 @@ export const systemAPI = {
 }
 
 export default systemAPI
+
+export interface ImageUpdateStatus {
+  enabled: boolean
+  id?: string
+  phase: string
+  version?: string
+  error?: string
+}
+
+export async function getImageUpdateStatus(): Promise<ImageUpdateStatus> {
+  const { data } = await apiClient.get<ImageUpdateStatus>('/admin/system/image-update', { timeout: 12000 })
+  return data
+}
+
+export async function startImageUpdate(): Promise<ImageUpdateStatus> {
+  const { data } = await apiClient.post<ImageUpdateStatus>('/admin/system/image-update', undefined, { timeout: 45000 })
+  return data
+}

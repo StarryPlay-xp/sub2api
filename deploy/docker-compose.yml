@@ -16,8 +16,9 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE:-ghcr.io/starryplay-xp/sub2api:latest}
     container_name: sub2api
+    stop_grace_period: 2m
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

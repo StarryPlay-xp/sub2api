@@ -5,6 +5,8 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 
 Optional account-specific WireGuard egress: [deployment and verification guide (Chinese)](WIREGUARD_CN.md).
 
+This fork's Docker updates: [host image updater and first-install guide (Chinese)](image-updater/README.md).
+
 ## Deployment Methods
 
 | Method | Best For | Setup Wizard |

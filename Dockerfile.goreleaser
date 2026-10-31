@@ -14,7 +14,8 @@ FROM ${ALPINE_IMAGE}
 
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
-LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
+LABEL org.opencontainers.image.source="https://github.com/StarryPlay-xp/sub2api"
+ENV SUB2API_DEPLOYMENT=docker
 
 # Install runtime dependencies
 RUN apk add --no-cache \

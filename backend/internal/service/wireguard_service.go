@@ -21,14 +21,15 @@ type WireGuardRepository interface {
 	PruneTrafficHistory(context.Context, time.Time) error
 }
 type WireGuardService struct {
-	Store    WireGuardRepository
-	Box      *wgtunnel.SecretBox
-	Manager  *wgtunnel.Manager
-	Router   *egress.Router
-	Observer *egress.Observer
-	Recorder *egress.Recorder
-	cancel   context.CancelFunc
-	done     chan struct{}
+	Store        WireGuardRepository
+	Box          *wgtunnel.SecretBox
+	Manager      *wgtunnel.Manager
+	Router       *egress.Router
+	Observer     *egress.Observer
+	Recorder     *egress.Recorder
+	imageUpdater *ImageUpdateService
+	cancel       context.CancelFunc
+	done         chan struct{}
 }
 
 func (s *WireGuardService) Start() {
@@ -54,6 +55,9 @@ func (s *WireGuardService) Start() {
 func (s *WireGuardService) Close() {
 	if s == nil {
 		return
+	}
+	if s.imageUpdater != nil {
+		s.imageUpdater.Close()
 	}
 	if s.cancel != nil {
 		s.cancel()

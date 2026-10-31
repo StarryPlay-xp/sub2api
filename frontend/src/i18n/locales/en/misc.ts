@@ -19,6 +19,13 @@ export default {
 
   // Version Badge
   version: {
+    imageHint: "The host backs up and restarts the application while retaining its database, data mounts and keys.",
+    imageReconnecting: "Waiting for the service to reconnect. The host continues the update.",
+    imageRecovery: "Inspect the host job and node status. Check database compatibility before recovery.",
+    imageInstall: "Update to {version}",
+    imageInterruption: "Updating briefly interrupts the service and active requests.",
+    imageSubmitUncertain: "The request outcome is uncertain. Checking the host job; do not resubmit.",
+    imagePhases: {"idle": "Updater ready", "unconfigured": "Host updater is not installed or configured", "queued": "Update accepted", "preflight": "Checking deployment and data mounts", "pulling": "Downloading image", "stopping": "Closing requests and WG tunnels", "backing_up": "Backing up database, configuration and keys", "recreating": "Starting the new version", "verifying": "Verifying data and WG configuration", "succeeded": "Image and configuration verified; manually verify egress", "failed": "Update failed before application replacement", "needs_attention": "Update requires inspection", "unknown": "Checking update status"},
     currentVersion: 'Current Version',
     latestVersion: 'Latest Version',
     upToDate: "You're running the latest version.",

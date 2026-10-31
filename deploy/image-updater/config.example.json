@@ -1,0 +1,12 @@
+{
+  "project_directory": "/opt/sub2api",
+  "project_name": "sub2api",
+  "compose_files": [
+    "/opt/sub2api/compose.yaml",
+    "/opt/sub2api/compose.image-updater.yml"
+  ],
+  "env_file": "/opt/sub2api/.env",
+  "state_directory": "/var/lib/sub2api-updater",
+  "socket_directory": "/run/sub2api-updater",
+  "app_gid": 1000
+}

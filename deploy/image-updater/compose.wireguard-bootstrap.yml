@@ -1,0 +1,20 @@
+# First deployment only. Keep real files out of Git and image build contexts.
+# Both files must be readable only by their owner (application UID 1000).
+services:
+  sub2api:
+    environment:
+      WIREGUARD_KEY_FILE: /run/sub2api-secrets/wireguard.key
+      WIREGUARD_BOOTSTRAP_FILE: /run/sub2api-secrets/wg-bootstrap.json
+    volumes:
+      - type: bind
+        source: ./secrets/wireguard.key
+        target: /run/sub2api-secrets/wireguard.key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/wg-bootstrap.json
+        target: /run/sub2api-secrets/wg-bootstrap.json
+        read_only: true
+        bind:
+          create_host_path: false

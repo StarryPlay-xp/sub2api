@@ -19,6 +19,13 @@ export default {
 
   // Version Badge
   version: {
+    imageHint: "镜像更新会保留现有数据库、数据目录及密钥，由服务器完成备份和重启，出口连通性由人工验收。",
+    imageReconnecting: "正在等待服务恢复连接；更新任务仍由服务器执行。",
+    imageRecovery: "请在服务器检查任务和节点状态，确认数据库兼容后再决定恢复方式。",
+    imageInstall: "更新到 {version}",
+    imageInterruption: "更新会短暂中断服务和正在进行的请求。",
+    imageSubmitUncertain: "请求结果暂未确认，正在查询服务器任务状态，请勿重复操作。",
+    imagePhases: {"idle": "更新服务已就绪", "unconfigured": "尚未安装或配置服务器更新服务", "queued": "更新任务已受理", "preflight": "正在检查部署与数据挂载", "pulling": "正在下载新镜像", "stopping": "正在关闭请求与 WG 隧道", "backing_up": "正在备份数据库、配置和密钥", "recreating": "正在启动新版本", "verifying": "正在校验数据和 WG 配置", "succeeded": "镜像更新及配置校验已完成，请人工验收出口", "failed": "更新未执行成功，现有应用未被替换", "needs_attention": "更新需要人工检查", "unknown": "正在查询更新状态"},
     currentVersion: '当前版本',
     latestVersion: '最新版本',
     upToDate: '已是最新版本',

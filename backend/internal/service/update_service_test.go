@@ -185,3 +185,15 @@ func TestUpdateServiceRollbackToVersionAcceptsVPrefix(t *testing.T) {
 	require.NotErrorIs(t, err, ErrRollbackVersionNotAllowed)
 	require.Contains(t, err.Error(), "no compatible release found")
 }
+
+func TestUpdateCacheRejectsOldRepositoryPayload(t *testing.T) {
+	cache := &updateServiceCacheStub{data: `{"latest":"99.0.0","timestamp":9999999999,"release_info":{"html_url":"https://github.com/Wei-Shaw/sub2api/releases"}}`}
+	svc := NewUpdateService(cache, &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v1.2.4"}}, "1.2.3", "release")
+	info, err := svc.CheckUpdate(context.Background(), false)
+	require.NoError(t, err)
+	require.Equal(t, "1.2.4", info.LatestVersion)
+	require.False(t, info.Cached)
+	info, err = svc.CheckUpdate(context.Background(), false)
+	require.NoError(t, err)
+	require.True(t, info.Cached)
+}

@@ -18,8 +18,9 @@ import (
 
 // SystemHandler handles system-related operations
 type SystemHandler struct {
-	updateSvc systemUpdateService
-	lockSvc   *service.SystemOperationLockService
+	updateSvc    systemUpdateService
+	lockSvc      *service.SystemOperationLockService
+	imageUpdater *service.ImageUpdateService
 }
 
 // systemUpdateTimeout bounds a full in-place update or rollback: the release
@@ -201,6 +202,10 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 // RestartService restarts the systemd service
 // POST /api/v1/admin/system/restart
 func (h *SystemHandler) RestartService(c *gin.Context) {
+	if service.SystemUpdateMode() == "image" {
+		response.Error(c, http.StatusConflict, "Image updates restart automatically; use the host updater")
+		return
+	}
 	operationID := buildSystemOperationID(c, "restart")
 	payload := gin.H{"operation_id": operationID}
 	executeAdminIdempotentJSON(c, "admin.system.restart", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {

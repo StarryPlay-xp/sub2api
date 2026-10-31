@@ -1,11 +1,14 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"os"
+	"time"
 )
 
 func ProvideWireGuardService(db *sql.DB, cfg *config.Config) (*service.WireGuardService, error) {
@@ -18,6 +21,13 @@ func ProvideWireGuardService(db *sql.DB, cfg *config.Config) (*service.WireGuard
 		}
 	}
 	store := &WireGuardStore{DB: db}
+	if path := os.Getenv("WIREGUARD_BOOTSTRAP_FILE"); path != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := store.BootstrapWireGuard(ctx, path, box); err != nil {
+			return nil, err
+		}
+	}
 	manager := wgtunnel.NewManager(store, box)
 	router, err := egress.NewRouter(store, manager)
 	if err != nil {
