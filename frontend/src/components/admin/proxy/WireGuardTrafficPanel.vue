@@ -150,41 +150,42 @@
       </div>
 
       <!-- 周期发送 / 接收 / 合计 -->
-      <div v-if="loading && !report" class="grid gap-3 sm:grid-cols-3">
+      <div v-if="loading && !report" class="grid gap-3 md:grid-cols-3">
         <div
           v-for="index in 3"
           :key="index"
           class="h-[92px] animate-pulse rounded-xl border border-gray-100 bg-gray-100 dark:border-dark-700/70 dark:bg-dark-700/60"
         ></div>
       </div>
-      <div v-else class="grid gap-3 sm:grid-cols-3">
+      <div v-else class="grid gap-3 md:grid-cols-3">
         <div
           v-for="metric in metrics"
           :key="metric.key"
           class="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 transition-colors duration-200 hover:border-gray-200 dark:border-dark-700/70 dark:bg-dark-900/30 dark:hover:border-dark-600"
         >
-          <div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-dark-300">
-            <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: metric.color }"></span>
-            <span>{{ metric.label }}</span>
-            <span
-              v-if="metric.key === 'total'"
-              class="ml-auto text-[10px] font-normal text-gray-400 dark:text-dark-500"
-            >
-              {{ t('wireguard.periodTraffic') }}
-            </span>
-          </div>
-          <div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span class="text-2xl font-semibold tracking-tight text-gray-900 tabular-nums dark:text-white">
-              {{ metric.value }}
-            </span>
+          <!-- 速率放在标题行，避免长速率文本把它挤到数值下方 -->
+          <div class="flex min-h-[22px] items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-dark-300">
+            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ backgroundColor: metric.color }"></span>
+            <span class="truncate">{{ metric.label }}</span>
             <span
               v-if="metric.rate !== null"
-              class="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500 ring-1 ring-gray-200/80 tabular-nums dark:bg-dark-800 dark:text-dark-300 dark:ring-dark-700"
+              class="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white px-1.5 py-0.5 text-[11px] font-medium text-gray-500 ring-1 ring-gray-200/80 tabular-nums dark:bg-dark-800 dark:text-dark-300 dark:ring-dark-700"
               :title="t('wireguard.rate')"
             >
               <Icon :name="metric.icon" size="xs" class="h-3 w-3" />
               {{ formatRate(metric.rate) }}
             </span>
+            <span
+              v-else-if="metric.key === 'total'"
+              class="ml-auto shrink-0 whitespace-nowrap text-[10px] font-normal text-gray-400 dark:text-dark-500"
+            >
+              {{ t('wireguard.periodTraffic') }}
+            </span>
+          </div>
+          <div
+            class="mt-2 whitespace-nowrap text-2xl font-semibold tracking-tight text-gray-900 tabular-nums dark:text-white"
+          >
+            {{ metric.value }}
           </div>
         </div>
       </div>
@@ -199,22 +200,52 @@
       <!-- 流量历史 -->
       <div class="rounded-xl border border-gray-100 bg-white p-3 dark:border-dark-700/70 dark:bg-dark-900/20">
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span
               v-for="metric in seriesMetrics"
               :key="metric.key"
               class="inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-dark-300"
             >
-              <span class="h-1 w-4 rounded-full" :style="{ backgroundColor: metric.color }"></span>
+              <span class="h-2.5 w-2.5 rounded-sm" :style="{ backgroundColor: metric.color }"></span>
               {{ metric.label }}
             </span>
+            <span
+              v-if="showChart && gaps.length"
+              class="inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-dark-300"
+            >
+              <span class="h-2.5 w-2.5 rounded-sm ring-1 ring-inset ring-gray-200 dark:ring-dark-600" :style="gapSwatchStyle"></span>
+              {{ t('wireguard.noRecordLegend') }}
+            </span>
           </div>
-          <span v-if="report?.has_records" class="text-[11px] text-gray-400 dark:text-dark-500">
-            {{ t('wireguard.gapsHint') }}
-          </span>
+          <div v-if="showChart" class="flex items-center gap-2">
+            <span class="text-[11px] text-gray-400 tabular-nums dark:text-dark-500">{{ binLabel }}</span>
+            <div
+              v-if="canFocus"
+              class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-900/60"
+              role="group"
+              :aria-label="t('wireguard.chartRange')"
+            >
+              <button
+                v-for="option in chartViewOptions"
+                :key="option.value"
+                type="button"
+                class="rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40"
+                :class="
+                  chartView === option.value
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                    : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200'
+                "
+                :aria-pressed="chartView === option.value"
+                @click="chartView = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
         </div>
         <div
-          class="relative h-48 sm:h-52"
+          ref="chartBox"
+          class="relative h-52 sm:h-56"
           :role="showChart ? 'img' : undefined"
           :aria-label="showChart ? chartAriaLabel : undefined"
         >
@@ -225,7 +256,7 @@
             leave-to-class="opacity-0"
             mode="out-in"
           >
-            <Line v-if="showChart" key="chart" :data="chartData" :options="chartOptions" />
+            <Bar v-if="showChart" key="chart" :data="chartData" :options="chartOptions" :plugins="chartPlugins" />
             <div
               v-else-if="loading"
               key="loading"
@@ -249,6 +280,9 @@
             </div>
           </Transition>
         </div>
+        <p v-if="showChart && gaps.length" class="mt-2 px-1 text-[11px] text-gray-400 dark:text-dark-500">
+          {{ t('wireguard.gapsHint') }}
+        </p>
       </div>
 
       <!-- 统计告警 -->
@@ -285,20 +319,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useElementSize } from '@vueuse/core'
 import {
+  BarElement,
   Chart as ChartJS,
-  Filler,
   Legend,
-  LineElement,
   LinearScale,
-  PointElement,
   Tooltip,
   type ChartData,
   type ChartOptions,
-  type ScriptableContext,
+  type Plugin,
   type TooltipItem
 } from 'chart.js'
-import { Line } from 'vue-chartjs'
+import { Bar } from 'vue-chartjs'
 import Icon from '@/components/icons/Icon.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import type {
@@ -321,8 +354,19 @@ import {
   utcOffsetLabel,
   type DateMode
 } from '@/utils/wireguardTraffic'
+import {
+  buildTimeTicks,
+  buildTrafficBins,
+  durationParts,
+  formatBinRange,
+  formatTimeTick,
+  gapSpans,
+  grainMs,
+  recordedSpan,
+  type TimeSpan
+} from '@/utils/wireguardTrafficChart'
 
-ChartJS.register(LinearScale, PointElement, LineElement, Filler, Legend, Tooltip)
+ChartJS.register(LinearScale, BarElement, Legend, Tooltip)
 
 type MetricIcon = 'arrowUp' | 'arrowDown' | 'chartBar'
 type CustomIssueCode =
@@ -344,7 +388,9 @@ interface Metric {
   icon: MetricIcon
 }
 
-interface LinePoint {
+type ChartView = 'focus' | 'full'
+
+interface BarPoint {
   x: number
   y: number | null
 }
@@ -387,10 +433,11 @@ const palette = (() => {
   return {
     sent: '#0d9488',
     received: dark ? '#9085e9' : '#6250d6',
-    sentFill: dark ? 'rgba(13, 148, 136, 0.30)' : 'rgba(13, 148, 136, 0.22)',
-    receivedFill: dark ? 'rgba(144, 133, 233, 0.26)' : 'rgba(98, 80, 214, 0.16)',
+    sentHover: dark ? '#14b8a6' : '#0f766e',
+    receivedHover: dark ? '#a59cf0' : '#4f3fc0',
+    gapFill: dark ? 'rgba(148, 163, 184, 0.06)' : 'rgba(100, 116, 139, 0.05)',
+    gapStroke: dark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(100, 116, 139, 0.22)',
     total: dark ? '#94a3b8' : '#64748b',
-    surface: dark ? '#1e293b' : '#ffffff',
     grid: dark ? 'rgba(148, 163, 184, 0.14)' : 'rgba(15, 23, 42, 0.06)',
     ticks: dark ? '#94a3b8' : '#64748b',
     tooltipBg: dark ? '#0f172a' : '#ffffff',
@@ -645,12 +692,91 @@ function clock(value?: string) {
   return value ? new Date(value).toLocaleTimeString() : '—'
 }
 
-// 同一根轴的刻度共用一个单位，避免出现 976.6 KiB 与 1.9 MiB 混排。
+const chartView = ref<ChartView>('focus')
+const chartBox = ref<HTMLElement | null>(null)
+const { width: chartWidth } = useElementSize(chartBox)
+
+const chartViewOptions = computed<{ value: ChartView; label: string }[]>(() => [
+  { value: 'focus', label: t('wireguard.chartFocus') },
+  { value: 'full', label: t('wireguard.chartFull') }
+])
+
+const grain = computed(() => grainMs(props.report?.interval ?? 'hour'))
+
+const reportSpan = computed<TimeSpan | null>(() => {
+  if (!props.report) return null
+  const start = Date.parse(props.report.start)
+  const end = Date.parse(props.report.end)
+  return Number.isNaN(start) || Number.isNaN(end) || end <= start ? null : { start, end }
+})
+
+const dataSpan = computed(() => recordedSpan(props.report?.history ?? [], grain.value))
+
+// 有记录的时段明显短于所选周期时才提供聚焦，否则两种视图几乎一样。
+const canFocus = computed(() => {
+  const range = reportSpan.value
+  const data = dataSpan.value
+  return Boolean(range && data && data.end - data.start < (range.end - range.start) * 0.85)
+})
+
+const viewSpan = computed<TimeSpan | null>(() => {
+  const range = reportSpan.value
+  const data = dataSpan.value
+  if (!range) return null
+  if (chartView.value === 'focus' && canFocus.value && data) {
+    return { start: Math.max(range.start, data.start), end: Math.min(range.end, data.end) }
+  }
+  return range
+})
+
+// 按图表宽度控制柱数（每柱约 7px）和刻度数，窄屏自动合并为更长的时间段。
+const maxBins = computed(() => Math.min(120, Math.max(24, Math.floor((chartWidth.value || 640) / 7))))
+const maxTicks = computed(() => Math.min(10, Math.max(3, Math.floor((chartWidth.value || 640) / 80))))
+
+const binned = computed(() => {
+  const view = viewSpan.value
+  const range = reportSpan.value
+  if (!view || !range) return { size: grain.value, bins: [] }
+  return buildTrafficBins(props.report?.history ?? [], {
+    grain: grain.value,
+    view,
+    range,
+    maxBins: maxBins.value
+  })
+})
+
+const gaps = computed(() => gapSpans(binned.value.bins))
+
+const xBounds = computed(() => {
+  const bins = binned.value.bins
+  return bins.length ? { min: bins[0].start, max: bins[bins.length - 1].end } : null
+})
+
+const xTicks = computed(() =>
+  xBounds.value
+    ? buildTimeTicks(xBounds.value.min, xBounds.value.max, maxTicks.value, binned.value.size)
+    : { values: [], step: binned.value.size }
+)
+
+const durationKeys = {
+  minute: 'wireguard.binMinutes',
+  hour: 'wireguard.binHours',
+  day: 'wireguard.binDays'
+} as const
+
+const binLabel = computed(() => {
+  const { unit, count } = durationParts(binned.value.size)
+  return t('wireguard.perBar', { size: t(durationKeys[unit], { count }) })
+})
+
+const gapSwatchStyle = {
+  backgroundColor: palette.gapFill,
+  backgroundImage: `repeating-linear-gradient(135deg, ${palette.gapStroke} 0 1px, transparent 1px 3px)`
+}
+
+// 同一根轴的刻度共用一个单位，避免出现 976.6 KiB 与 1.9 MiB 混排；柱为堆叠，按合计取最大值。
 const axisUnit = computed(() => {
-  const max = (props.report?.history ?? []).reduce(
-    (value, bucket) => Math.max(value, Number(bucket.tx_bytes), Number(bucket.rx_bytes)),
-    0
-  )
+  const max = binned.value.bins.reduce((value, bin) => Math.max(value, bin.tx + bin.rx), 0)
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let divisor = 1
   let unit = 0
@@ -661,92 +787,93 @@ const axisUnit = computed(() => {
   return { divisor, label: units[unit] }
 })
 
-const bucketDuration = computed(() =>
-  props.report?.interval === 'minute' ? 60_000 : 3_600_000
-)
-
-// history 只含实际保存的记录；在缺失桶处插入断点，避免把缺失区间连成连续曲线。
-function buildSeries(key: 'tx_bytes' | 'rx_bytes'): LinePoint[] {
-  const points: LinePoint[] = []
-  let previous: number | null = null
-  for (const bucket of props.report?.history ?? []) {
-    const x = Date.parse(bucket.start)
-    if (previous !== null && x - previous > bucketDuration.value * 1.5) {
-      points.push({ x: previous + bucketDuration.value, y: null })
-    }
-    points.push({ x, y: Number(bucket[key]) / axisUnit.value.divisor })
-    previous = x
-  }
-  return points
-}
-
-// Chart.js 接受 null 断点，但官方类型只声明了数值点。
-function asLineData(points: LinePoint[]) {
+// Chart.js 接受 null（无记录）点，但官方类型只声明了数值点。
+function asBarData(points: BarPoint[]) {
   return points as unknown as { x: number; y: number }[]
 }
 
-function areaFill(top: string) {
-  return (context: ScriptableContext<'line'>) => {
-    const { ctx, chartArea } = context.chart
-    if (!chartArea) return 'transparent'
-    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-    gradient.addColorStop(0, top)
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-    return gradient
+function barDataset(key: 'tx' | 'rx', label: string, color: string, hover: string) {
+  return {
+    label,
+    data: asBarData(
+      binned.value.bins.map((bin) => ({
+        x: (bin.start + bin.end) / 2,
+        y: bin.recorded ? bin[key] / axisUnit.value.divisor : null
+      }))
+    ),
+    backgroundColor: color,
+    hoverBackgroundColor: hover,
+    borderRadius: 2,
+    barPercentage: 0.86,
+    categoryPercentage: 1,
+    stack: 'traffic'
   }
 }
 
-const chartData = computed<ChartData<'line'>>(() => ({
+const chartData = computed<ChartData<'bar', { x: number; y: number }[]>>(() => ({
   datasets: [
-    {
-      label: t('wireguard.sent'),
-      data: asLineData(buildSeries('tx_bytes')),
-      borderColor: palette.sent,
-      backgroundColor: areaFill(palette.sentFill),
-      fill: true,
-      borderWidth: 2,
-      tension: 0.35,
-      spanGaps: false,
-      pointRadius: 0,
-      pointHitRadius: 12,
-      pointHoverRadius: 4,
-      pointHoverBorderWidth: 2,
-      pointHoverBorderColor: palette.surface,
-      pointHoverBackgroundColor: palette.sent
-    },
-    {
-      label: t('wireguard.received'),
-      data: asLineData(buildSeries('rx_bytes')),
-      borderColor: palette.received,
-      backgroundColor: areaFill(palette.receivedFill),
-      fill: true,
-      borderWidth: 2,
-      tension: 0.35,
-      spanGaps: false,
-      pointRadius: 0,
-      pointHitRadius: 12,
-      pointHoverRadius: 4,
-      pointHoverBorderWidth: 2,
-      pointHoverBorderColor: palette.surface,
-      pointHoverBackgroundColor: palette.received
-    }
+    barDataset('tx', t('wireguard.sent'), palette.sent, palette.sentHover),
+    barDataset('rx', t('wireguard.received'), palette.received, palette.receivedHover)
   ]
 }))
 
-function axisTime(value: number) {
-  const date = new Date(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  if (props.report?.interval === 'minute') {
-    return `${pad(date.getHours())}:${pad(date.getMinutes())}`
-  }
-  const span = props.report
-    ? Date.parse(props.report.end) - Date.parse(props.report.start)
-    : 0
-  const day = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-  return span > 36 * 3_600_000 ? day : `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+function binAt(index: number | undefined) {
+  return index === undefined ? undefined : binned.value.bins[index]
 }
 
-const chartOptions = computed<ChartOptions<'line'>>(() => ({
+const hatchPatterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern | null>()
+
+function hatchPattern(ctx: CanvasRenderingContext2D) {
+  if (!hatchPatterns.has(ctx)) {
+    const tile = document.createElement('canvas')
+    tile.width = 6
+    tile.height = 6
+    const tileCtx = tile.getContext('2d')
+    if (tileCtx) {
+      tileCtx.strokeStyle = palette.gapStroke
+      tileCtx.lineWidth = 1
+      tileCtx.beginPath()
+      tileCtx.moveTo(0, 6)
+      tileCtx.lineTo(6, 0)
+      tileCtx.moveTo(-1, 1)
+      tileCtx.lineTo(1, -1)
+      tileCtx.moveTo(5, 7)
+      tileCtx.lineTo(7, 5)
+      tileCtx.stroke()
+    }
+    hatchPatterns.set(ctx, tileCtx ? ctx.createPattern(tile, 'repeat') : null)
+  }
+  return hatchPatterns.get(ctx) ?? null
+}
+
+// 无记录的时段画斜线阴影，和流量为 0 的柱区分开。
+const gapShading: Plugin<'bar'> = {
+  id: 'wireguardTrafficGaps',
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart
+    const x = scales.x
+    if (!gaps.value.length || !chartArea || !x) return
+    const height = chartArea.bottom - chartArea.top
+    const pattern = hatchPattern(ctx)
+    ctx.save()
+    for (const gap of gaps.value) {
+      const left = Math.max(chartArea.left, x.getPixelForValue(gap.start))
+      const right = Math.min(chartArea.right, x.getPixelForValue(gap.end))
+      if (right <= left) continue
+      ctx.fillStyle = palette.gapFill
+      ctx.fillRect(left, chartArea.top, right - left, height)
+      if (pattern) {
+        ctx.fillStyle = pattern
+        ctx.fillRect(left, chartArea.top, right - left, height)
+      }
+    }
+    ctx.restore()
+  }
+}
+
+const chartPlugins = [gapShading]
+
+const chartOptions = computed<ChartOptions<'bar'>>(() => ({
   responsive: true,
   maintainAspectRatio: false,
   animation: animateChart.value ? { duration: 600, easing: 'easeOutQuart' } : false,
@@ -757,6 +884,9 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
       backgroundColor: palette.tooltipBg,
       titleColor: palette.tooltipTitle,
       bodyColor: palette.tooltipBody,
+      footerColor: palette.tooltipBody,
+      footerFont: { size: 11, weight: 'normal' },
+      footerMarginTop: 6,
       borderColor: palette.tooltipBorder,
       borderWidth: 1,
       padding: 10,
@@ -765,14 +895,33 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
       boxWidth: 8,
       boxHeight: 8,
       boxPadding: 4,
+      filter: (item: TooltipItem<'bar'>) => item.parsed.y !== null,
       callbacks: {
-        title: (items: TooltipItem<'line'>[]) => {
-          const x = items[0]?.parsed.x
-          return typeof x === 'number' ? formatDateTimeLabel(new Date(x)) : ''
+        title: (items: TooltipItem<'bar'>[]) => {
+          const bin = binAt(items[0]?.dataIndex)
+          const range = reportSpan.value
+          if (!bin || !range) return ''
+          return formatBinRange(
+            Math.max(bin.start, range.start),
+            Math.min(bin.end, range.end),
+            binned.value.size
+          )
         },
-        label: (context: TooltipItem<'line'>) => {
-          const y = context.parsed.y
-          return `${context.dataset.label}: ${typeof y === 'number' ? formatBytes(y * axisUnit.value.divisor) : '—'}`
+        label: (context: TooltipItem<'bar'>) => {
+          const bin = binAt(context.dataIndex)
+          const value = bin ? (context.datasetIndex === 0 ? bin.tx : bin.rx) : 0
+          return `${context.dataset.label}: ${formatBytes(value)}`
+        },
+        footer: (items: TooltipItem<'bar'>[]) => {
+          const bin = binAt(items[0]?.dataIndex)
+          if (!bin) return []
+          const lines = [`${t('wireguard.total')}: ${formatBytes(bin.tx + bin.rx)}`]
+          if (bin.recorded < bin.expected) {
+            lines.push(
+              t('wireguard.binCoverage', { recorded: bin.recorded, expected: bin.expected })
+            )
+          }
+          return lines
         }
       }
     }
@@ -780,22 +929,28 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
   scales: {
     x: {
       type: 'linear',
-      min: props.report ? Date.parse(props.report.start) : undefined,
-      max: props.report ? Date.parse(props.report.end) : undefined,
+      stacked: true,
+      offset: false,
+      min: xBounds.value?.min,
+      max: xBounds.value?.max,
       grid: { display: false },
       border: { display: false },
+      afterBuildTicks: (axis) => {
+        axis.ticks = xTicks.value.values.map((value) => ({ value }))
+      },
       ticks: {
         color: palette.ticks,
         font: { size: 10 },
-        maxTicksLimit: 7,
         maxRotation: 0,
         autoSkip: true,
         autoSkipPadding: 12,
-        callback: (value) => axisTime(Number(value))
+        callback: (value) => formatTimeTick(Number(value), xTicks.value.step)
       }
     },
     y: {
+      stacked: true,
       beginAtZero: true,
+      grace: '8%',
       grid: { color: palette.grid, drawTicks: false },
       border: { display: false },
       ticks: {

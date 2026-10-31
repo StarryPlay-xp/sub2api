@@ -44,7 +44,7 @@
         </div>
         <div class="rounded-2xl border border-gray-200 p-4 dark:border-dark-700">
           <div class="mb-3 h-4 w-28 rounded bg-gray-200 dark:bg-dark-700"></div>
-          <div class="grid gap-3 sm:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-3">
             <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
             <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
             <div class="h-20 rounded-xl bg-gray-100 dark:bg-dark-700/60"></div>
