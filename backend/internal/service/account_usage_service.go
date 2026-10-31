@@ -346,6 +346,14 @@ func batchUsageErrorMessage(err error) string {
 }
 
 func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *Account, forceProbe bool) (*UsageInfo, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	if account == nil {
 		return nil, fmt.Errorf("account is required")
 	}

@@ -127,3 +127,22 @@ func TestAccountProxySelectionLargePoolAndTransactionalLeastUsed(t *testing.T) {
 	require.NoError(t, tx.Rollback())
 	require.NoError(t, db.Ping(), "测试结束连接可用")
 }
+
+func TestAutomaticProxySelectionExcludesWireGuard(t *testing.T) {
+	db := scopedAdminKeyTestDB(t)
+	_, err := db.Exec(`CREATE TABLE proxies(id BIGINT PRIMARY KEY,protocol TEXT,status TEXT,expires_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
+ CREATE TABLE accounts(id BIGINT PRIMARY KEY,proxy_id BIGINT,deleted_at TIMESTAMPTZ);
+ INSERT INTO proxies VALUES(1,'wireguard','active',NULL,NULL),(2,'http','active',NULL,NULL);`)
+	require.NoError(t, err)
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	repo := newProxyRepositoryWithSQL(client, db)
+	tx, err := client.Tx(context.Background())
+	require.NoError(t, err)
+	defer tx.Rollback()
+	ctx := dbent.NewTxContext(context.Background(), tx)
+	for _, mode := range []string{"random", "least_used"} {
+		id, err := repo.SelectAccountProxy(ctx, mode)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, id)
+	}
+}

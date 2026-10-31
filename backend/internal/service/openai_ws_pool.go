@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"math"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -68,6 +70,7 @@ func (e *openAIWSDialError) Unwrap() error {
 }
 
 type openAIWSAcquireRequest struct {
+	Route   *egress.Route
 	Account *Account
 	WSURL   string
 	Headers http.Header
@@ -84,6 +87,7 @@ type openAIWSAcquireRequest struct {
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
+	egressKey           string
 	betaFeatures        string
 	codexInstallationID string
 	sessionIDHyphen     string
@@ -1107,6 +1111,14 @@ type openAIWSAcquireQueueWait struct {
 }
 
 func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConnLease, error) {
+	if route := egress.FromContext(ctx); route != nil {
+		req.Route = route
+	}
+	if req.Route != nil {
+		if err := req.Route.Check(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if p != nil {
 		p.metrics.acquireTotal.Add(1)
 	}
@@ -1129,6 +1141,17 @@ func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireReque
 		lease.idleBefore = lease.conn.idleDuration(now)
 		lease.ageBefore = lease.conn.age(now)
 	}
+	if lease != nil && req.Route != nil {
+		if err := req.Route.Check(ctx); err != nil {
+			lease.Release()
+			return nil, err
+		}
+		var remote net.Addr
+		if connection, ok := lease.conn.ws.(interface{ EgressRemoteAddr() net.Addr }); ok {
+			remote = connection.EgressRemoteAddr()
+		}
+		req.Route.RecordConnectionAttempt(ctx, remote, lease.reused, "websocket_acquired")
+	}
 	return lease, err
 }
 
@@ -1146,6 +1169,9 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 retryAcquire:
 	accountID := req.Account.ID
 	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	if req.Route != nil {
+		compatibility.egressKey = req.Route.PoolKey()
+	}
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -2118,6 +2144,12 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
 	}
+	if req.Route != nil {
+		if err := req.Route.Check(ctx); err != nil {
+			return nil, err
+		}
+		ctx = egress.WithRoute(ctx, req.Route)
+	}
 	headers := cloneHeader(req.Headers)
 	var err error
 	if req.HeadersFactory != nil {
@@ -2153,6 +2185,9 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
 	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	if req.Route != nil {
+		pooledConn.handshakeCompatibility.egressKey = req.Route.PoolKey()
+	}
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2331,6 +2366,12 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 }
 
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
+	if (a.Route == nil) != (b.Route == nil) {
+		return false
+	}
+	if a.Route != nil && a.Route.PoolKey() != b.Route.PoolKey() {
+		return false
+	}
 	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
 		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)

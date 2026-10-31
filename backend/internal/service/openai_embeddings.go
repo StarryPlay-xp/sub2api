@@ -24,6 +24,14 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	body []byte,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	startTime := time.Now()
 
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())

@@ -61,6 +61,14 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 

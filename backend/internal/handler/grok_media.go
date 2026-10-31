@@ -416,7 +416,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					h.handleFailoverExhausted(c, failoverErr, true)
 					return
 				}
-				if !failoverErr.ShouldRetryNextAccount() {
+				if !failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 				}

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
@@ -124,6 +127,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	}
 
 	wrapped := &coderOpenAIWSClientConn{}
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { wrapped.remote = info.Conn.RemoteAddr() }})
 	opts := &coderws.DialOptions{
 		HTTPHeader:      cloneHeader(headers),
 		CompressionMode: coderws.CompressionContextTakeover,
@@ -132,7 +136,16 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			return true
 		},
 	}
-	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
+	if route := egress.FromContext(ctx); route != nil {
+		if err := route.Check(ctx); err != nil {
+			return nil, 0, nil, err
+		}
+		transport := &http.Transport{TLSHandshakeTimeout: 10 * time.Second, ForceAttemptHTTP2: false}
+		if err := route.ConfigureHTTP(transport); err != nil {
+			return nil, 0, nil, err
+		}
+		opts.HTTPClient = &http.Client{Transport: route.Wrap(transport), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	} else if proxy := strings.TrimSpace(proxyURL); proxy != "" {
 		proxyClient, err := d.proxyHTTPClient(proxy)
 		if err != nil {
 			return nil, 0, nil, err
@@ -289,6 +302,7 @@ func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransport
 }
 
 type coderOpenAIWSClientConn struct {
+	remote        net.Addr
 	conn          *coderws.Conn
 	upstreamPings atomic.Int64
 }
@@ -396,3 +410,5 @@ func (c *coderOpenAIWSClientConn) CloseNow() error {
 	_ = c.conn.CloseNow()
 	return nil
 }
+
+func (c *coderOpenAIWSClientConn) EgressRemoteAddr() net.Addr { return c.remote }

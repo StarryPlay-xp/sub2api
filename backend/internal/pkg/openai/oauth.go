@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"net/url"
 	"strings"
 	"sync"
@@ -41,12 +42,13 @@ const (
 
 // OAuthSession stores OAuth flow state for OpenAI
 type OAuthSession struct {
-	State        string    `json:"state"`
-	CodeVerifier string    `json:"code_verifier"`
-	ClientID     string    `json:"client_id,omitempty"`
-	ProxyURL     string    `json:"proxy_url,omitempty"`
-	RedirectURI  string    `json:"redirect_uri"`
-	CreatedAt    time.Time `json:"created_at"`
+	EgressRoute  *egress.Route `json:"-"`
+	State        string        `json:"state"`
+	CodeVerifier string        `json:"code_verifier"`
+	ClientID     string        `json:"client_id,omitempty"`
+	ProxyURL     string        `json:"proxy_url,omitempty"`
+	RedirectURI  string        `json:"redirect_uri"`
+	CreatedAt    time.Time     `json:"created_at"`
 }
 
 // SessionStore manages OAuth sessions in memory

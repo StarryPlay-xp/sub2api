@@ -15,7 +15,7 @@ func (r *proxyRepository) SelectAccountProxy(ctx context.Context, mode string) (
 		return 0, fmt.Errorf("代理选择需要写事务")
 	}
 	client := tx.Client()
-	query := `SELECT p.id FROM proxies p WHERE p.deleted_at IS NULL AND p.status='active' AND (p.expires_at IS NULL OR p.expires_at>NOW()) ORDER BY random() LIMIT 1`
+	query := `SELECT p.id FROM proxies p WHERE p.deleted_at IS NULL AND p.status='active' AND p.protocol<>'wireguard' AND (p.expires_at IS NULL OR p.expires_at>NOW()) ORDER BY random() LIMIT 1`
 	switch mode {
 	case "random":
 	case "least_used":
@@ -26,7 +26,7 @@ func (r *proxyRepository) SelectAccountProxy(ctx context.Context, mode string) (
    SELECT a.id AS account_id,a.proxy_id FROM accounts a WHERE a.deleted_at IS NULL AND a.proxy_id IS NOT NULL
   ), counts AS (SELECT proxy_id,COUNT(*) AS n FROM bindings GROUP BY proxy_id)
   SELECT p.id FROM proxies p LEFT JOIN counts c ON c.proxy_id=p.id
-  WHERE p.deleted_at IS NULL AND p.status='active' AND (p.expires_at IS NULL OR p.expires_at>NOW())
+  WHERE p.deleted_at IS NULL AND p.status='active' AND p.protocol<>'wireguard' AND (p.expires_at IS NULL OR p.expires_at>NOW())
   ORDER BY COALESCE(c.n,0),p.id LIMIT 1`
 	default:
 		return 0, fmt.Errorf("不支持的代理选择模式")

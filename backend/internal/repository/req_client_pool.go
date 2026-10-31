@@ -1,12 +1,14 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 
@@ -15,6 +17,7 @@ import (
 
 // reqClientOptions 定义 req 客户端的构建参数
 type reqClientOptions struct {
+	Route       *egress.Route
 	ProxyURL    string        // 代理 URL（支持 http/https/socks5）
 	Timeout     time.Duration // 请求超时时间
 	Impersonate bool          // 是否模拟浏览器指纹（当前为 Firefox，Chrome 伪装会被 chatgpt.com 的 Cloudflare 质询）
@@ -57,12 +60,18 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 		// 在同一出口 IP 下稳定通过，故改用 Firefox 指纹。
 		client = client.ImpersonateFirefox()
 	}
-	trimmed, _, err := proxyurl.Parse(opts.ProxyURL)
-	if err != nil {
-		return nil, err
-	}
-	if trimmed != "" {
-		client.SetProxyURL(trimmed)
+	if opts.Route != nil {
+		if err := opts.Route.ConfigureReq(client); err != nil {
+			return nil, err
+		}
+	} else {
+		trimmed, _, err := proxyurl.Parse(opts.ProxyURL)
+		if err != nil {
+			return nil, err
+		}
+		if trimmed != "" {
+			client.SetProxyURL(trimmed)
+		}
 	}
 	client = instrumentReqClient(client)
 
@@ -85,8 +94,12 @@ func instrumentReqClient(client *req.Client) *req.Client {
 }
 
 func buildReqClientKey(opts reqClientOptions) string {
+	routeKey := strings.TrimSpace(opts.ProxyURL)
+	if opts.Route != nil {
+		routeKey = opts.Route.PoolKey()
+	}
 	return fmt.Sprintf("%s|%s|%t|%t",
-		strings.TrimSpace(opts.ProxyURL),
+		routeKey,
 		opts.Timeout.String(),
 		opts.Impersonate,
 		opts.ForceHTTP2,
@@ -102,4 +115,14 @@ func CreatePrivacyReqClient(proxyURL string) (*req.Client, error) {
 		Timeout:     30 * time.Second,
 		Impersonate: true, // Enable browser TLS fingerprint impersonation (Firefox, see getSharedReqClient)
 	})
+}
+
+func routeFromContexts(contexts []context.Context) *egress.Route {
+	if len(contexts) == 0 {
+		return nil
+	}
+	return egress.FromContext(contexts[0])
+}
+func CreatePrivacyReqClientWithContext(ctx context.Context, proxyURL string) (*req.Client, error) {
+	return getSharedReqClient(reqClientOptions{Route: egress.FromContext(ctx), ProxyURL: proxyURL, Timeout: 30 * time.Second, Impersonate: true})
 }

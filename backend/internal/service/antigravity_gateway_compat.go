@@ -59,6 +59,14 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	body []byte,
 	_ *ParsedRequest,
 ) (*ForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}
@@ -106,6 +114,14 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	body []byte,
 	_ *ParsedRequest,
 ) (*ForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}

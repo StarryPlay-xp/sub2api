@@ -350,7 +350,12 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	hbCtx, hbCancel := context.WithCancel(ctx)
 	hbDone := make(chan struct{})
 	go s.runSubmitHeartbeat(hbCtx, job.BatchID, hbDone)
-	providerJob, err := provider.Submit(ctx, job, account, input)
+	ctx, routeErr := contextForAccountEgress(ctx, s.AccountRepo, account)
+	var providerJob *BatchProviderJob
+	err = routeErr
+	if err == nil {
+		providerJob, err = provider.Submit(ctx, job, account, input)
+	}
 	hbCancel()
 	<-hbDone
 	if err != nil {
@@ -729,6 +734,10 @@ func (s *BatchImagePublicService) Cancel(ctx context.Context, owner BatchImageOw
 		}
 		account, err := s.AccountRepo.GetByID(ctx, *job.AccountID)
 		if err != nil {
+			return nil, ErrBatchImageCancelFailed
+		}
+		ctx, routeErr := contextForAccountEgress(ctx, s.AccountRepo, account)
+		if routeErr != nil {
 			return nil, ErrBatchImageCancelFailed
 		}
 		if err := provider.Cancel(ctx, job, account); err != nil {

@@ -26,7 +26,7 @@ func NewGeminiOAuthClient(cfg *config.Config) service.GeminiOAuthClient {
 }
 
 func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, oauthType, code, codeVerifier, redirectURI, proxyURL string) (*geminicli.TokenResponse, error) {
-	client, err := createGeminiReqClient(proxyURL)
+	client, err := createGeminiReqClient(proxyURL, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -75,7 +75,7 @@ func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, oauthType, code, c
 }
 
 func (c *geminiOAuthClient) RefreshToken(ctx context.Context, oauthType, refreshToken, proxyURL string) (*geminicli.TokenResponse, error) {
-	client, err := createGeminiReqClient(proxyURL)
+	client, err := createGeminiReqClient(proxyURL, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -117,8 +117,9 @@ func (c *geminiOAuthClient) RefreshToken(ctx context.Context, oauthType, refresh
 	return &tokenResp, nil
 }
 
-func createGeminiReqClient(proxyURL string) (*req.Client, error) {
+func createGeminiReqClient(proxyURL string, contexts ...context.Context) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
+		Route:    routeFromContexts(contexts),
 		ProxyURL: proxyURL,
 		Timeout:  60 * time.Second,
 	})

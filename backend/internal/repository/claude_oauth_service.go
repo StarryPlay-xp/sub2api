@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -33,7 +34,7 @@ type claudeOAuthService struct {
 }
 
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.clientForContext(ctx, proxyURL)
 	if err != nil {
 		return "", fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -92,7 +93,7 @@ func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey
 }
 
 func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.clientForContext(ctx, proxyURL)
 	if err != nil {
 		return "", fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -172,7 +173,7 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 }
 
 func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.clientForContext(ctx, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -228,7 +229,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 }
 
 func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.clientForContext(ctx, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -276,5 +277,17 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 		client.SetProxyURL(trimmed)
 	}
 
+	return instrumentReqClient(client), nil
+}
+
+func (s *claudeOAuthService) clientForContext(ctx context.Context, proxyURL string) (*req.Client, error) {
+	route := egress.FromContext(ctx)
+	if route == nil {
+		return s.clientFactory(proxyURL)
+	}
+	client := req.C().SetTimeout(60 * time.Second).ImpersonateChrome().SetCookieJar(nil)
+	if err := route.ConfigureReq(client); err != nil {
+		return nil, err
+	}
 	return instrumentReqClient(client), nil
 }

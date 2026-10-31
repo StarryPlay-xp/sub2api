@@ -10,6 +10,9 @@ import "time"
 //
 // byID 是「全部代理」的快照（id -> Proxy），now 为判定基准时间。
 func ResolveProxyFallbackTarget(start Proxy, byID map[int64]Proxy, now time.Time) (*int64, bool) {
+	if start.Protocol == ProxyProtocolWireGuard {
+		return nil, false
+	}
 	switch start.FallbackMode {
 	case FallbackModeDirect:
 		return nil, true
@@ -24,7 +27,7 @@ func ResolveProxyFallbackTarget(start Proxy, byID map[int64]Proxy, now time.Time
 				return nil, false
 			}
 			p, ok := byID[*curID]
-			if !ok {
+			if !ok || p.Protocol == ProxyProtocolWireGuard {
 				return nil, false
 			}
 			// Disabled nodes may define a fallback, but cannot be selected as targets.

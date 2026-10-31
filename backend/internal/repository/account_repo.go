@@ -26,6 +26,7 @@ import (
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -43,8 +44,9 @@ import (
 //   - sql: 原生 SQL 执行器，用于复杂查询和批量操作
 //   - schedulerCache: 调度器缓存，用于在账号状态变更时同步快照
 type accountRepository struct {
-	client *dbent.Client // Ent ORM 客户端
-	sql    sqlExecutor   // 原生 SQL 执行接口
+	egressRouter *egress.Router
+	client       *dbent.Client // Ent ORM 客户端
+	sql          sqlExecutor   // 原生 SQL 执行接口
 	// schedulerCache 用于在账号状态变更时主动同步快照到缓存，
 	// 确保粘性会话能及时感知账号不可用状态。
 	// Used to proactively sync account snapshot to cache when status changes,
@@ -532,6 +534,11 @@ func (r *accountRepository) updateLockedAccount(
 	explicitRateSyncEnabled *bool,
 	explicitRateMultiplier *float64,
 ) (*dbent.Account, error) {
+	if service.IsExplicitEgressEdit(ctx, account.ID) {
+		if _, err := client.ExecContext(ctx, `SELECT set_config('sub2api.explicit_egress_change',$1,true)`, strconv.FormatInt(account.ID, 10)); err != nil {
+			return nil, err
+		}
+	}
 	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled, explicitRateSyncEnabled)
 	if err != nil {
 		return nil, err
@@ -3309,6 +3316,20 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 	}
 
+	if updates.ProxyID != nil {
+		allowed := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if service.IsExplicitEgressEdit(ctx, id) {
+				allowed = append(allowed, strconv.FormatInt(id, 10))
+			}
+		}
+		if len(allowed) > 0 {
+			data, _ := json.Marshal(allowed)
+			if _, err := exec.ExecContext(ctx, `SELECT set_config('sub2api.explicit_egress_accounts',$1,true)`, string(data)); err != nil {
+				return 0, err
+			}
+		}
+	}
 	result, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err

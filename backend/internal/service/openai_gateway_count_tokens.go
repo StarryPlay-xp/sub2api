@@ -50,6 +50,14 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 	account *Account,
 	body []byte,
 ) error {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return routeErr
+		}
+	}
+
 	if account == nil {
 		writeOpenAIResponsesInputTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("responses input_tokens: missing account")
@@ -259,6 +267,14 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	body []byte,
 	defaultMappedModel string,
 ) error {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return routeErr
+		}
+	}
+
 	if account == nil {
 		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("count_tokens: missing account")

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
 )
 
@@ -947,6 +948,9 @@ func (m *PluginManager) ReadUIAsset(ctx context.Context, id int64, relative stri
 func (m *PluginManager) RoundTripOpenAIOAuth(ctx context.Context, request *http.Request, proxyURL string, account *Account) (*http.Response, bool, error) {
 	if !m.ShouldRouteOpenAIOAuth(account) {
 		return nil, false, nil
+	}
+	if selected := egress.FromContext(ctx); selected != nil && selected.Kind() == egress.WireGuard {
+		return nil, true, errors.New("WireGuard is not supported by external OAuth plugins")
 	}
 	route := m.route.Load()
 	if route == nil {

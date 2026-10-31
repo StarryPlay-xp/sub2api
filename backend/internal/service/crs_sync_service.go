@@ -243,7 +243,7 @@ func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, 
 		return nil, errors.New("username and password are required")
 	}
 
-	client, err := httpclient.GetClient(httpclient.Options{
+	client, err := httpclient.GetClientForContext(ctx, httpclient.Options{
 		Timeout:            20 * time.Second,
 		ValidateResolvedIP: s.cfg.Security.URLAllowlist.Enabled,
 		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,

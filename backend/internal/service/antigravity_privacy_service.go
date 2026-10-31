@@ -28,7 +28,7 @@ func setAntigravityPrivacy(ctx context.Context, accessToken, projectID, proxyURL
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	client, err := antigravity.NewClient(proxyURL)
+	client, err := antigravity.NewClient(proxyURL, ctx)
 	if err != nil {
 		slog.Warn("antigravity_privacy_client_error", "error", err.Error())
 		return AntigravityPrivacyFailed

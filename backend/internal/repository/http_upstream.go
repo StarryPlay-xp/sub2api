@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -167,6 +168,7 @@ type httpUpstreamService struct {
 	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
 	openAIHTTP2Fallbacks sync.Map
+	egressRouter         *egress.Router
 }
 
 // NewHTTPUpstream 创建通用 HTTP 上游服务
@@ -201,6 +203,11 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	var routeErr error
+	req, proxyURL, routeErr = s.prepareEgress(req, proxyURL, accountID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	applyGrokCLIProxyHeaders(req)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
@@ -211,7 +218,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 获取或创建对应的客户端，并标记请求占用
-	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
+	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile, egress.FromContext(req.Context()))
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +259,11 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	var routeErr error
+	req, proxyURL, routeErr = s.prepareEgress(req, proxyURL, accountID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
@@ -272,7 +284,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile)
+	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, egress.FromContext(req.Context()))
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
@@ -547,15 +559,15 @@ func isSupportedGrokCLIVersion(version string) bool {
 }
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
+func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, routes ...*egress.Route) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true, routes...)
 }
 
 // getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
 // TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
-func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool, routes ...*egress.Route) (*upstreamClientEntry, error) {
 	isolation := s.getIsolationMode()
-	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
+	proxyKey, parsedProxy, err := normalizeEgressRoute(proxyURL, routes)
 	if err != nil {
 		return nil, err
 	}
@@ -620,7 +632,18 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
 	}
 
-	client := &http.Client{Transport: transport}
+	var roundTripper http.RoundTripper = transport
+	if len(routes) > 0 && routes[0] != nil {
+		if routes[0].Kind() != egress.Proxy {
+			if err := routes[0].ConfigureHTTP(transport); err != nil {
+				s.mu.Unlock()
+				return nil, err
+			}
+			transport.DialTLSContext = tlsfingerprint.NewDialer(profile, routes[0].DialContext).DialTLSContext
+		}
+		roundTripper = routes[0].Wrap(transport)
+	}
+	client := &http.Client{Transport: roundTripper}
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}
@@ -666,6 +689,9 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 	if host == "" {
 		return errors.New("request host is empty")
 	}
+	if route := egress.FromContext(req.Context()); route != nil && route.Kind() == egress.WireGuard {
+		return route.ValidateHost(req.Context(), host)
+	}
 	if err := urlvalidator.ValidateResolvedIP(host); err != nil {
 		return err
 	}
@@ -686,8 +712,8 @@ func (s *httpUpstreamService) acquireClient(proxyURL string, accountID int64, ac
 }
 
 // acquireClientWithProfile 获取或创建客户端，并按请求 profile 选择协议策略。
-func (s *httpUpstreamService) acquireClientWithProfile(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntry(proxyURL, accountID, accountConcurrency, profile, true, true)
+func (s *httpUpstreamService) acquireClientWithProfile(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, routes ...*egress.Route) (*upstreamClientEntry, error) {
+	return s.getClientEntry(proxyURL, accountID, accountConcurrency, profile, true, true, routes...)
 }
 
 // getOrCreateClient 获取或创建客户端
@@ -712,11 +738,11 @@ func (s *httpUpstreamService) getOrCreateClient(proxyURL string, accountID int64
 // getClientEntry 获取或创建客户端条目
 // markInFlight=true 时会标记进行中请求，用于请求路径防止被淘汰
 // enforceLimit=true 时会限制客户端数量，超限且无法淘汰时返回错误
-func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool, routes ...*egress.Route) (*upstreamClientEntry, error) {
 	// 获取隔离模式
 	isolation := s.getIsolationMode()
 	// 标准化代理 URL 并解析
-	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
+	proxyKey, parsedProxy, err := normalizeEgressRoute(proxyURL, routes)
 	if err != nil {
 		return nil, err
 	}
@@ -775,7 +801,15 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build transport: %w", err)
 	}
-	client := &http.Client{Transport: transport}
+	var roundTripper http.RoundTripper = transport
+	if len(routes) > 0 && routes[0] != nil {
+		if err := routes[0].ConfigureHTTP(transport); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		roundTripper = routes[0].Wrap(transport)
+	}
+	client := &http.Client{Transport: roundTripper}
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}

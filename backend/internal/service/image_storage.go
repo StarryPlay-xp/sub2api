@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"io"
 	"mime"
 	"net"
@@ -317,7 +319,14 @@ func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]by
 	if err != nil {
 		return nil, "", fmt.Errorf("build download request: %w", err)
 	}
-	resp, err := u.httpClient.Do(req)
+	client := u.httpClient
+	if route := egress.FromContext(ctx); route != nil {
+		client, err = httpclient.GetClientForContext(egress.WithRoute(ctx, route.RequirePublicTargets()), httpclient.Options{Timeout: 60 * time.Second, ValidateResolvedIP: true})
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("download image: %w", err)
 	}

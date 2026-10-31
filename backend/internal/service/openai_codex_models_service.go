@@ -1926,6 +1926,12 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstreamForRequest(reques
 }
 
 func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, request openAIModelsRequest, ifNoneMatch string) (*OpenAIModelsResponse, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountIDEgress(ctx, s.accountRepo, request.accountID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	reqCtx, cancel := context.WithTimeout(ctx, codexModelsManifestRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, request.url, nil)
@@ -1950,7 +1956,7 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 			resp, handled, err = s.pluginManager.RoundTripOpenAIOAuth(reqCtx, req, request.proxyURL, request.credentialAccount)
 		}
 		if !handled {
-			client, clientErr := httpclient.GetClient(httpclient.Options{
+			client, clientErr := httpclient.GetClientForContext(ctx, httpclient.Options{
 				ProxyURL:              request.proxyURL,
 				Timeout:               codexModelsManifestRequestTimeout,
 				ResponseHeaderTimeout: 10 * time.Second,

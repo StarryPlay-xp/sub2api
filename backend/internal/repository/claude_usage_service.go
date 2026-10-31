@@ -74,9 +74,14 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 		if err != nil {
 			return nil, fmt.Errorf("request with TLS fingerprint failed: %w", err)
 		}
+	} else if s.httpUpstream != nil && opts.AccountID > 0 {
+		resp, err = s.httpUpstream.Do(req, opts.ProxyURL, opts.AccountID, 0)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		// 不启用 TLS 指纹，使用普通 HTTP 客户端
-		client, err := httpclient.GetClient(httpclient.Options{
+		client, err := httpclient.GetClientForContext(ctx, httpclient.Options{
 			ProxyURL:           opts.ProxyURL,
 			Timeout:            30 * time.Second,
 			ValidateResolvedIP: true,

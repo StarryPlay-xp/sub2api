@@ -204,7 +204,7 @@ func (s *FailoverState) HandleFailoverError(
 		return FailoverCanceled
 	}
 	s.LastFailoverErr = failoverErr
-	if failoverErr == nil || !failoverErr.ShouldRetryNextAccount() {
+	if failoverErr == nil || !failoverErr.ShouldRetryNextAccountContext(ctx) {
 		return FailoverExhausted
 	}
 

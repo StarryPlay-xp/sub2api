@@ -368,6 +368,11 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	ctx, err = contextForAccountEgress(ctx, s.accountRepo, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	c.Request = c.Request.WithContext(ctx)
 	bindAccountTestPlatform(c, account)
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/subtle"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -43,6 +44,12 @@ type OpenAIAuthURLResult struct {
 
 // GenerateAuthURL generates an OpenAI OAuth authorization URL
 func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI, platform string) (*OpenAIAuthURLResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	// Generate PKCE values
 	state, err := openai.GenerateState()
 	if err != nil {
@@ -88,6 +95,7 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 		ClientID:     clientID,
 		RedirectURI:  redirectURI,
 		ProxyURL:     proxyURL,
+		EgressRoute:  egress.FromContext(ctx),
 		CreatedAt:    time.Now(),
 	}
 	s.sessionStore.Set(sessionID, session)
@@ -144,6 +152,11 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 	}
 
 	// Get proxy URL: prefer input.ProxyID, fallback to session.ProxyURL
+	var routeErr error
+	ctx, routeErr = contextForOAuthEgress(ctx, s.proxyRepo, session.EgressRoute, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
@@ -337,6 +350,12 @@ func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID strin
 
 // RefreshAccountToken refreshes token for an OpenAI OAuth account
 func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*OpenAITokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	if account.Platform != PlatformOpenAI {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT", "account is not an OpenAI account")
 	}

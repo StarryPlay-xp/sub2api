@@ -9,6 +9,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -19,8 +20,9 @@ import (
 // sqlQuerier 已替换为 sqlExecutor（定义在 group_repo.go），
 // proxyRepository 使用同一接口以支持 ExecContext。
 type proxyRepository struct {
-	client *dbent.Client
-	sql    sqlExecutor
+	egressRouter *egress.Router
+	client       *dbent.Client
+	sql          sqlExecutor
 }
 
 const proxyProbeOutboxAccountChunkSize = 500
@@ -729,6 +731,10 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, snapshot ser
 // sweepOneExpiredProxyOnExec 在给定的 sqlExecutor 上执行：标记 expired + 改投账号。
 func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec sqlExecutor, snapshot service.Proxy, now time.Time, target *int64, change bool) ([]int64, error) {
 	proxyID := snapshot.ID
+	if snapshot.Protocol == service.ProxyProtocolWireGuard {
+		target = nil
+		change = false
+	}
 	// The UPDATE locks the row and rechecks its predicates after concurrent writes.
 	// If an administrator renewed, disabled or reconfigured the proxy after the
 	// snapshot, leave its accounts untouched and reconsider it on the next sweep.

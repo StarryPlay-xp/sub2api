@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/google/uuid"
@@ -47,6 +48,12 @@ func checkAnthropicMessagesCredential(account *Account) error {
 }
 
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, []byte, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return nil, nil, routeErr
+	}
+
 	if err := checkAnthropicMessagesCredential(account); err != nil {
 		return nil, nil, err
 	}
@@ -69,6 +76,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			targetURL = validatedURL + "/v1/messages?beta=true"
 		}
 	} else if account.IsCustomBaseURLEnabled() {
+		if route := egress.FromContext(ctx); route != nil && route.Kind() == egress.WireGuard {
+			return nil, nil, fmt.Errorf("WireGuard is not supported by external Anthropic relays")
+		}
 		customURL := account.GetCustomBaseURL()
 		if customURL == "" {
 			return nil, nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)

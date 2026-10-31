@@ -85,7 +85,7 @@ type ClaudeResetCreditService struct {
 func NewClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeTokenProvider, proxies ProxyRepository, settings *SettingService) *ClaudeResetCreditService {
 	s := &ClaudeResetCreditService{accounts: accounts, tokens: tokens, proxies: proxies, settings: settings, now: time.Now}
 	s.do = func(req *http.Request, proxy string) (*http.Response, error) {
-		client, err := httpclient.GetClient(httpclient.Options{ProxyURL: proxy, Timeout: 25 * time.Second, ValidateResolvedIP: true})
+		client, err := httpclient.GetClientForContext(req.Context(), httpclient.Options{ProxyURL: proxy, Timeout: 25 * time.Second, ValidateResolvedIP: true})
 		if err != nil {
 			return nil, err
 		}
@@ -139,6 +139,12 @@ func (s *ClaudeResetCreditService) headers(ctx context.Context, req *http.Reques
 }
 
 func (s *ClaudeResetCreditService) query(ctx context.Context, id int64) (*ClaudeResetCredits, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountIDEgress(ctx, s.accounts, id)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	_, token, proxy, err := s.account(ctx, id)
 	if err != nil {
 		return nil, err

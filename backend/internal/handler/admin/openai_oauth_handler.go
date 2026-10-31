@@ -208,6 +208,12 @@ func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	routeCtx, routeErr := service.ContextForSelectedNode(c.Request.Context(), h.adminService, req.ProxyID)
+	if routeErr != nil {
+		response.BadRequest(c, routeErr.Error())
+		return
+	}
+	c.Request = c.Request.WithContext(routeCtx)
 	var proxyURL string
 	if req.ProxyID != nil {
 		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
@@ -391,6 +397,12 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 		return
 	}
 
+	routeCtx, routeErr := service.ContextForSelectedNode(c.Request.Context(), h.adminService, req.ProxyID)
+	if routeErr != nil {
+		response.BadRequest(c, routeErr.Error())
+		return
+	}
+	c.Request = c.Request.WithContext(routeCtx)
 	var proxyURL string
 	if req.ProxyID != nil {
 		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)

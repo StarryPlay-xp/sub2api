@@ -19,7 +19,7 @@ func referralTestClient(t *testing.T, handler http.HandlerFunc) *openAIReferralC
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	adapter := NewOpenAIReferralClient(func(proxy string) (*req.Client, error) {
+	adapter := NewOpenAIReferralClient(func(_ context.Context, proxy string) (*req.Client, error) {
 		require.Equal(t, "test-proxy", proxy)
 		// A shared factory may have retries; the adapter must override them.
 		return req.C().SetCommonRetryCount(2).SetCommonRetryCondition(func(_ *req.Response, _ error) bool { return true }), nil
@@ -133,7 +133,7 @@ func TestOpenAIReferralClientLostResponseIsUnknownWithoutRetry(t *testing.T) {
 }
 
 func TestOpenAIReferralClientFactoryErrorIsSanitized(t *testing.T) {
-	client := NewOpenAIReferralClient(func(string) (*req.Client, error) { return nil, errors.New("secret proxy credentials") })
+	client := NewOpenAIReferralClient(func(context.Context, string) (*req.Client, error) { return nil, errors.New("secret proxy credentials") })
 	err := client.SendInvite(context.Background(), referralTestCall(), "friend@example.com")
 	require.Equal(t, "OPENAI_REFERRAL_CLIENT_ERROR", infraerrors.Reason(err))
 	require.NotContains(t, err.Error(), "secret")

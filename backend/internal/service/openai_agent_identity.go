@@ -185,7 +185,7 @@ func registerAgentIdentityTask(ctx context.Context, account *Account) (string, e
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	client, err := httpclient.GetClient(httpclient.Options{
+	client, err := httpclient.GetClientForContext(ctx, httpclient.Options{
 		ProxyURL:              proxyURL,
 		Timeout:               agentIdentityTaskRegistrationTimeout,
 		ResponseHeaderTimeout: 15 * time.Second,
@@ -238,6 +238,11 @@ func registerAgentIdentityTask(ctx context.Context, account *Account) (string, e
 func ensureAgentIdentityTaskForAccount(ctx context.Context, repo AccountRepository, wsInvalidator agentIdentityWSConnectionInvalidator, taskMu *sync.Mutex, account *Account, expectedTaskID string) error {
 	if account == nil || !account.IsOpenAIAgentIdentity() {
 		return nil
+	}
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, repo, account)
+	if routeErr != nil {
+		return routeErr
 	}
 	credAccount := account
 	if account.IsShadow() {

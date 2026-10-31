@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,12 @@ type AntigravityAuthURLResult struct {
 
 // GenerateAuthURL 生成 Google OAuth 授权链接
 func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64) (*AntigravityAuthURLResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	state, err := antigravity.GenerateState()
 	if err != nil {
 		return nil, fmt.Errorf("生成 state 失败: %w", err)
@@ -58,6 +65,7 @@ func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *
 		State:        state,
 		CodeVerifier: codeVerifier,
 		ProxyURL:     proxyURL,
+		EgressRoute:  egress.FromContext(ctx),
 		CreatedAt:    time.Now(),
 	}
 	s.sessionStore.Set(sessionID, session)
@@ -106,6 +114,11 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 	}
 
 	// 确定代理 URL
+	var routeErr error
+	ctx, routeErr = contextForOAuthEgress(ctx, s.proxyRepo, session.EgressRoute, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
@@ -114,7 +127,7 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 		}
 	}
 
-	client, err := antigravity.NewClient(proxyURL)
+	client, err := antigravity.NewClient(proxyURL, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
@@ -179,7 +192,7 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 			time.Sleep(backoff)
 		}
 
-		client, err := antigravity.NewClient(proxyURL)
+		client, err := antigravity.NewClient(proxyURL, ctx)
 		if err != nil {
 			return nil, fmt.Errorf("create antigravity client failed: %w", err)
 		}
@@ -213,6 +226,12 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 
 // ValidateRefreshToken 用 refresh token 验证并获取完整的 token 信息（含 email 和 project_id）
 func (s *AntigravityOAuthService) ValidateRefreshToken(ctx context.Context, refreshToken string, proxyID *int64) (*AntigravityTokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	var proxyURL string
 	if proxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
@@ -228,7 +247,7 @@ func (s *AntigravityOAuthService) ValidateRefreshToken(ctx context.Context, refr
 	}
 
 	// 获取用户信息（email）
-	client, err := antigravity.NewClient(proxyURL)
+	client, err := antigravity.NewClient(proxyURL, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
@@ -276,6 +295,12 @@ func isNonRetryableAntigravityOAuthError(err error) bool {
 
 // RefreshAccountToken 刷新账户的 token
 func (s *AntigravityOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*AntigravityTokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return nil, fmt.Errorf("非 Antigravity OAuth 账户")
 	}
@@ -347,7 +372,7 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 			time.Sleep(backoff)
 		}
 
-		client, err := antigravity.NewClient(proxyURL)
+		client, err := antigravity.NewClient(proxyURL, ctx)
 		if err != nil {
 			return nil, fmt.Errorf("create antigravity client failed: %w", err)
 		}

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"net/http"
 	"strings"
 
@@ -32,7 +33,11 @@ func RegisterGatewayRoutes(
 ) {
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
-	clientRequestID := middleware.ClientRequestID()
+	requestIDMiddleware := middleware.ClientRequestID()
+	clientRequestID := func(c *gin.Context) {
+		c.Request = c.Request.WithContext(egress.WithScope(c.Request.Context()))
+		requestIDMiddleware(c)
+	}
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)

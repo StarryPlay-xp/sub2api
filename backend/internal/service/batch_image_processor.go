@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"io"
 	"net/http"
 	"sort"
@@ -80,6 +81,10 @@ func (p *BatchImageProviderProcessor) Process(ctx context.Context, batchID strin
 		return BatchImageProcessResult{}, ErrBatchImageMissingAccountID
 	}
 	account, err := p.AccountResolver.ResolveBatchImageAccount(ctx, *job.AccountID)
+	if err != nil {
+		return BatchImageProcessResult{}, err
+	}
+	ctx, err = contextForAccountEgress(ctx, p.AccountResolver, account)
 	if err != nil {
 		return BatchImageProcessResult{}, err
 	}
@@ -679,4 +684,11 @@ func truncateBatchImageMessage(message string, limit int) string {
 		return message
 	}
 	return message[:limit]
+}
+
+func (r *BatchImageAccountRepositoryResolver) EgressRouter() *egress.Router {
+	if p, ok := r.Repo.(EgressRouterProvider); ok {
+		return p.EgressRouter()
+	}
+	return nil
 }

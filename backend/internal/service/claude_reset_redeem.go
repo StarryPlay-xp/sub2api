@@ -136,6 +136,12 @@ func (s *ClaudeResetCreditService) lease(ctx context.Context, key, owner string)
 }
 
 func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, operation string) (*ClaudeResetOutcome, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountIDEgress(ctx, s.accounts, id)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	owner := uuid.NewString()
 	release, err := s.lease(ctx, fmt.Sprintf("claude:reset-credit:account:%d", id), owner)
 	if err != nil {

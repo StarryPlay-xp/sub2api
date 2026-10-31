@@ -60,6 +60,14 @@ func (p *GrokTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 }
 
 func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, p.accountRepo, account)
+		if routeErr != nil {
+			return "", routeErr
+		}
+	}
+
 	if account == nil {
 		return "", errors.New("account is nil")
 	}

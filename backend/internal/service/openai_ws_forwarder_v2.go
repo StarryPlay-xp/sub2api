@@ -38,6 +38,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	responseModelObserver := &upstreamResponseModelObserver{}
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)

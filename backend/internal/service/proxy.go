@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	FallbackModeNone   = "none"
-	FallbackModeProxy  = "proxy"
-	FallbackModeDirect = "direct"
+	ProxyProtocolWireGuard = "wireguard"
+	FallbackModeNone       = "none"
+	FallbackModeProxy      = "proxy"
+	FallbackModeDirect     = "direct"
 )
 
 type Proxy struct {

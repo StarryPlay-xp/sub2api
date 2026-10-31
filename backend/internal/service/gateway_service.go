@@ -1256,6 +1256,11 @@ func (s *GatewayService) hashContent(content string) string {
 
 // GetAccessToken 获取账号凭证
 func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return "", "", routeErr
+	}
 	switch account.Type {
 	case AccountTypeOAuth, AccountTypeSetupToken:
 		// Both oauth and setup-token use OAuth token flow

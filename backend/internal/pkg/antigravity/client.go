@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -286,11 +287,21 @@ const (
 	clientTimeout = 10 * time.Second
 )
 
-func NewClient(proxyURL string) (*Client, error) {
+func NewClient(proxyURL string, contexts ...context.Context) (*Client, error) {
 	client := &http.Client{
 		Timeout: clientTimeout,
 	}
 
+	if len(contexts) > 0 {
+		if route := egress.FromContext(contexts[0]); route != nil {
+			tr := &http.Transport{TLSHandshakeTimeout: proxyTLSHandshakeTimeout}
+			if err := route.ConfigureHTTP(tr); err != nil {
+				return nil, err
+			}
+			client.Transport = route.Wrap(tr)
+			return &Client{httpClient: client}, nil
+		}
+	}
 	_, parsed, err := proxyurl.Parse(proxyURL)
 	if err != nil {
 		return nil, err

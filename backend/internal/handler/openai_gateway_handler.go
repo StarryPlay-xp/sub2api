@@ -904,7 +904,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
 					}
-					if !failoverErr.ShouldRetryNextAccount() {
+					if !failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1476,7 +1476,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, nil), false, nil, err)
 					}
-					if !failoverErr.ShouldRetryNextAccount() {
+					if !failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -2745,7 +2745,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, failoverErr)
 		}
 		releaseAccountSlot()
-		if !failoverErr.ShouldRetryNextAccount() {
+		if !failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
 			return false
 		}

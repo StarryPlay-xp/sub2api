@@ -521,6 +521,13 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	proxies := admin.Group("/proxies")
 	{
+		proxies.GET("wireguard/capabilities", h.Admin.Proxy.WireGuardCapabilities)
+		proxies.POST("/wireguard", h.Admin.Proxy.WriteWireGuard)
+		proxies.GET("/:id/wireguard", h.Admin.Proxy.GetWireGuard)
+		proxies.PUT("/:id/wireguard", h.Admin.Proxy.WriteWireGuard)
+		proxies.POST("/:id/wireguard/state", h.Admin.Proxy.SetWireGuardState)
+		proxies.POST("/:id/wireguard/probe", h.Admin.Proxy.ProbeWireGuard)
+		proxies.GET("/egress-attempts", h.Admin.Proxy.EgressAttempts)
 		proxies.GET("", h.Admin.Proxy.List)
 		proxies.GET("/all", h.Admin.Proxy.GetAll)
 		// 代理导出泄露账号密码原文——要求 step-up 2FA

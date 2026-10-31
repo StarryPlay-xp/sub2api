@@ -1861,7 +1861,7 @@ func (s *ContentModerationService) moderationHTTPClient(ctx context.Context, cfg
 	if err != nil {
 		return nil, err
 	}
-	client, err := httpclient.GetClient(httpclient.Options{ProxyURL: proxyURL})
+	client, err := httpclient.GetClientForContext(ctx, httpclient.Options{ProxyURL: proxyURL})
 	if err != nil {
 		return nil, fmt.Errorf("build moderation proxy client: %w", err)
 	}

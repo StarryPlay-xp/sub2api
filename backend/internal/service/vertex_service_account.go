@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -205,7 +206,17 @@ func vertexServiceAccountProxyURL(account *Account) string {
 	return account.Proxy.URL()
 }
 
-func newVertexServiceAccountHTTPClient(proxyURL string) (*http.Client, error) {
+func newVertexServiceAccountHTTPClient(proxyURL string, contexts ...context.Context) (*http.Client, error) {
+	if len(contexts) > 0 {
+		if route := egress.FromContext(contexts[0]); route != nil {
+			tr := &http.Transport{TLSHandshakeTimeout: 10 * time.Second}
+			if err := route.ConfigureHTTP(tr); err != nil {
+				return nil, err
+			}
+			return &http.Client{Timeout: 30 * time.Second, Transport: route.Wrap(tr)}, nil
+		}
+	}
+
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
 		return servertiming.InstrumentClient(&http.Client{Timeout: 15 * time.Second}), nil
@@ -259,7 +270,7 @@ func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAc
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client, err := newVertexServiceAccountHTTPClient(proxyURL)
+	client, err := newVertexServiceAccountHTTPClient(proxyURL, ctx)
 	if err != nil {
 		return "", 0, fmt.Errorf("configure service account token proxy: %w", err)
 	}

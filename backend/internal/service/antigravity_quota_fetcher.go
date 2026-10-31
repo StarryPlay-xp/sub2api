@@ -48,10 +48,16 @@ func (f *AntigravityQuotaFetcher) CanFetch(account *Account) bool {
 
 // FetchQuota 获取 Antigravity 账户额度信息
 func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Account, proxyURL string) (*QuotaResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, f.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	accessToken := account.GetCredential("access_token")
 	projectID := account.GetCredential("project_id")
 
-	client, err := antigravity.NewClient(proxyURL)
+	client, err := antigravity.NewClient(proxyURL, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}

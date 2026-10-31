@@ -164,12 +164,18 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountIDEgress(ctx, s.accountRepo, accountID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := s.privacyClientFactory(proxyURL)
+	client, err := s.privacyClientFactory(ctx, proxyURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CLIENT_ERROR", "failed to build upstream client: %v", err)
 	}
@@ -358,6 +364,12 @@ func (s *OpenAIQuotaService) ResetCreditTargeted(ctx context.Context, accountID 
 }
 
 func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, creditID, redeemRequestID string, targeted bool) (*OpenAIQuotaResetResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountIDEgress(ctx, s.accountRepo, accountID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	// Shadow guard: resetting credits via a shadow account would silently
 	// operate on the parent's quota; that is surprising and unwanted. Callers
 	// must reset the parent account directly.
@@ -381,7 +393,7 @@ func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, c
 		return nil, err
 	}
 
-	client, err := s.privacyClientFactory(proxyURL)
+	client, err := s.privacyClientFactory(ctx, proxyURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CLIENT_ERROR", "failed to build upstream client: %v", err)
 	}

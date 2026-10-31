@@ -15,6 +15,7 @@ import (
 
 // ProxyHandler handles admin proxy management
 type ProxyHandler struct {
+	wireguard    *service.WireGuardService
 	adminService service.AdminService
 }
 

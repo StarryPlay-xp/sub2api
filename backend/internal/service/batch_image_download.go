@@ -140,6 +140,10 @@ func (s *BatchImageDownloadService) OpenItemContent(ctx context.Context, owner B
 	if err != nil {
 		return nil, err
 	}
+	ctx, err = contextForAccountEgress(ctx, s.AccountResolver, account)
+	if err != nil {
+		return nil, err
+	}
 	r, _, err := provider.OpenResult(ctx, job, account)
 	if err != nil {
 		return nil, ErrBatchImageResultMissing.WithCause(err)
@@ -212,6 +216,10 @@ func (s *BatchImageDownloadService) StreamZip(ctx context.Context, owner BatchIm
 	}
 
 	provider, account, err := s.providerAndAccount(ctx, job)
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = contextForAccountEgress(ctx, s.AccountResolver, account)
 	if err != nil {
 		return nil, err
 	}

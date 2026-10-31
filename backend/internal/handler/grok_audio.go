@@ -294,7 +294,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			return
 		}
 		var failoverErr *service.UpstreamFailoverError
-		if errors.As(forwardErr, &failoverErr) && failoverErr.ShouldRetryNextAccount() {
+		if errors.As(forwardErr, &failoverErr) && failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 			failed[account.ID] = struct{}{}
 			last = failoverErr
 			continue

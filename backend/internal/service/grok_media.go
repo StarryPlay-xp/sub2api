@@ -654,6 +654,14 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	body []byte,
 	contentType string,
 ) (*OpenAIForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	startTime := time.Now()
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")

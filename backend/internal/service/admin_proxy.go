@@ -106,6 +106,10 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	if proxy.Protocol == ProxyProtocolWireGuard {
+		return nil, infraerrors.BadRequest("WIREGUARD_DEDICATED_API", "Use WireGuard node settings to edit this node")
+	}
+
 	// Merge only supplied fields, then validate the resulting fallback configuration.
 	mode := proxy.FallbackMode
 	if input.FallbackMode != "" {
@@ -309,7 +313,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 	})
 	result.PassedCount++
 
-	client, err := httpclient.GetClient(httpclient.Options{
+	client, err := httpclient.GetClientForContext(ctx, httpclient.Options{
 		ProxyURL:              proxyURL,
 		Timeout:               proxyQualityRequestTimeout,
 		ResponseHeaderTimeout: proxyQualityResponseHeaderTimeout,

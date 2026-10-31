@@ -1674,6 +1674,12 @@ func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) erro
 // EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
 // 未设置则调用 disableOpenAITraining 并持久化到 Extra，返回设置的 mode 值。
 func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Account) string {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return PrivacyModeFailed
+	}
+
 	// 影子账号不持凭据，隐私设置由母账号管理，直接跳过。
 	if account.IsCredentialShadow() {
 		return ""
@@ -1711,6 +1717,12 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 
 // ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
 func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return PrivacyModeFailed
+	}
+
 	// 影子账号不持凭据,隐私由母账号管理,直接跳过(与 EnsureOpenAIPrivacy 一致——外审第4轮)。
 	if account.IsCredentialShadow() {
 		return ""
@@ -1754,6 +1766,12 @@ func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Acco
 // 仅当 privacy_mode 已成功设置（"privacy_set"）时跳过；
 // 未设置或之前失败（"privacy_set_failed"）均会重试。
 func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account *Account) string {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return PrivacyModeFailed
+	}
+
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return ""
 	}
@@ -1792,6 +1810,12 @@ func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account
 
 // ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account *Account) string {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return PrivacyModeFailed
+	}
+
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return ""
 	}

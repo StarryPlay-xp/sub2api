@@ -836,6 +836,12 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 	refreshWindow time.Duration,
 	gate refreshAttemptGate,
 ) error {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return routeErr
+	}
+
 	var lastErr error
 	maxRetries := s.maxRetries()
 
@@ -1441,6 +1447,12 @@ func isNonRetryableRefreshError(err error) bool {
 // ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
 // 未设置则调用 disableOpenAITraining 并持久化结果到 Extra。
 func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *Account) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return
+	}
+
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return
 	}
@@ -1485,6 +1497,12 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 // 仅当 privacy_mode 已成功设置（"privacy_set"）时跳过；
 // 未设置或之前失败（"privacy_set_failed"）均会重试。
 func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, account *Account) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+	if routeErr != nil {
+		return
+	}
+
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return
 	}

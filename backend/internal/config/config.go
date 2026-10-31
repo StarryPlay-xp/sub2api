@@ -67,7 +67,12 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 // 可通过 gateway.models_list_read_max_bytes 配置项覆盖。
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
+type WireGuardConfig struct {
+	KeyFile string `mapstructure:"key_file"`
+}
+
 type Config struct {
+	WireGuard               WireGuardConfig               `mapstructure:"wireguard"`
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
@@ -2090,6 +2095,7 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
+	viper.SetDefault("wireguard.key_file", "")
 	viper.SetDefault("run_mode", RunModeStandard)
 	viper.SetDefault("gateway.min_output_tokens", 128)
 	viper.SetDefault("simple_mode.auto_create_default_groups", true)

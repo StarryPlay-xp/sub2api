@@ -224,3 +224,37 @@ func TestAuditRecordsEveryMCPOAuthReadWithGrant(t *testing.T) {
 	require.Equal(t, "grant-1", logs[0].Extra["mcp_grant_id"])
 	require.Equal(t, "admin_list_users", logs[0].Extra["mcp_tool"])
 }
+
+func TestWireGuardConfigurationNeverEntersAuditBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &auditCaptureRepository{}
+	auditService := service.NewAuditLogService(repository, nil)
+	auditService.Start()
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+	handler := func(c *gin.Context) {
+		var input struct {
+			Config string `json:"config"`
+		}
+		require.NoError(t, c.ShouldBindJSON(&input))
+		require.Contains(t, input.Config, "wg-secret-canary")
+		c.Status(200)
+	}
+	router.POST("/api/v1/admin/proxies/wireguard", handler)
+	router.PUT("/api/v1/admin/proxies/:id/wireguard", handler)
+	for _, entry := range []struct{ method, path string }{{"POST", "/api/v1/admin/proxies/wireguard"}, {"PUT", "/api/v1/admin/proxies/1/wireguard"}} {
+		request := httptest.NewRequest(entry.method, entry.path, bytes.NewBufferString(`{"name":"test","config":"[Interface]\nPrivateKey=wg-secret-canary"}`))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, 200, recorder.Code)
+	}
+	auditService.Stop()
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	require.Len(t, repository.logs, 2)
+	for _, entry := range repository.logs {
+		require.Equal(t, "<credential-bearing body omitted>", entry.RequestBody)
+		require.NotContains(t, entry.RequestBody, "wg-secret-canary")
+	}
+}

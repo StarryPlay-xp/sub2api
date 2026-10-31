@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"log"
 	"time"
 
@@ -76,6 +77,12 @@ func (s *OAuthService) GenerateSetupTokenURL(ctx context.Context, proxyID *int64
 }
 
 func (s *OAuthService) generateAuthURLWithScope(ctx context.Context, scope string, proxyID *int64) (*GenerateAuthURLResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	// Generate PKCE values
 	state, err := oauth.GenerateState()
 	if err != nil {
@@ -110,6 +117,7 @@ func (s *OAuthService) generateAuthURLWithScope(ctx context.Context, scope strin
 		CodeVerifier: codeVerifier,
 		Scope:        scope,
 		ProxyURL:     proxyURL,
+		EgressRoute:  egress.FromContext(ctx),
 		CreatedAt:    time.Now(),
 	}
 	s.sessionStore.Set(sessionID, session)
@@ -152,6 +160,11 @@ func (s *OAuthService) ExchangeCode(ctx context.Context, input *ExchangeCodeInpu
 	}
 
 	// Get proxy URL
+	var routeErr error
+	ctx, routeErr = contextForOAuthEgress(ctx, s.proxyRepo, session.EgressRoute, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
@@ -184,6 +197,12 @@ type CookieAuthInput struct {
 
 // CookieAuth performs OAuth using sessionKey (cookie-based auto-auth)
 func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (*TokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	// Get proxy URL if specified
 	var proxyURL string
 	if input.ProxyID != nil {
@@ -304,6 +323,12 @@ func (s *OAuthService) RefreshToken(ctx context.Context, refreshToken string, pr
 
 // RefreshAccountToken refreshes token for an account
 func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*TokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	refreshToken := account.GetCredential("refresh_token")
 	if refreshToken == "" {
 		return nil, fmt.Errorf("no refresh token available")

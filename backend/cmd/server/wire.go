@@ -64,7 +64,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
-	return repository.CreatePrivacyReqClient
+	return repository.CreatePrivacyReqClientWithContext
 }
 
 func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
@@ -82,6 +82,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	wireguard *service.WireGuardService,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -143,6 +144,7 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"WireGuard", func() error { wireguard.Close(); return nil }},
 			{"PluginManager", func() error {
 				if pluginManager != nil {
 					pluginManager.Stop()

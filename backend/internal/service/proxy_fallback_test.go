@@ -103,3 +103,15 @@ func TestResolveFallbackSkipsInactiveBackup(t *testing.T) {
 		require.Nil(t, target)
 	})
 }
+
+func TestWireGuardNeverParticipatesInAutomaticFallback(t *testing.T) {
+	now := time.Now()
+	wg := Proxy{ID: 1, Protocol: ProxyProtocolWireGuard, Status: StatusActive, FallbackMode: FallbackModeDirect}
+	target, change := ResolveProxyFallbackTarget(wg, nil, now)
+	require.False(t, change)
+	require.Nil(t, target)
+	ordinary := Proxy{ID: 2, Protocol: "http", FallbackMode: FallbackModeProxy, BackupProxyID: i64(1)}
+	target, change = ResolveProxyFallbackTarget(ordinary, map[int64]Proxy{1: wg}, now)
+	require.False(t, change)
+	require.Nil(t, target)
+}

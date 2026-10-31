@@ -46,7 +46,7 @@ func NewGrokOAuthClient() service.GrokOAuthClient {
 }
 
 func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error) {
-	client, err := createGrokReqClient(proxyURL)
+	client, err := createGrokReqClient(proxyURL, ctx)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
 	}
@@ -80,7 +80,7 @@ func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, 
 }
 
 func (c *grokOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*xai.TokenResponse, error) {
-	client, err := createGrokReqClient(proxyURL)
+	client, err := createGrokReqClient(proxyURL, ctx)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
 	}
@@ -118,7 +118,7 @@ func (c *grokOAuthClient) LoginWithPassword(ctx context.Context, email, password
 	if err != nil {
 		return nil, err
 	}
-	httpClient, err := createGrokHTTPClient(proxyURL, true)
+	httpClient, err := createGrokHTTPClient(proxyURL, true, ctx)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
 	}
@@ -137,7 +137,7 @@ func (c *grokOAuthClient) LoginWithPassword(ctx context.Context, email, password
 }
 
 func (c *grokOAuthClient) ConvertSSOToBuild(ctx context.Context, ssoToken, proxyURL string) (*xai.TokenResponse, error) {
-	client, err := createGrokSSOHTTPClient(proxyURL)
+	client, err := createGrokSSOHTTPClient(proxyURL, ctx)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_SSO_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
 	}
@@ -151,15 +151,17 @@ func (c *grokOAuthClient) ConvertSSOToBuild(ctx context.Context, ssoToken, proxy
 	return tokenResp, nil
 }
 
-func createGrokReqClient(proxyURL string) (*req.Client, error) {
+func createGrokReqClient(proxyURL string, contexts ...context.Context) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
+		Route:    routeFromContexts(contexts),
 		ProxyURL: proxyURL,
 		Timeout:  60 * time.Second,
 	})
 }
 
-func createGrokSSOHTTPClient(proxyURL string) (*http.Client, error) {
+func createGrokSSOHTTPClient(proxyURL string, contexts ...context.Context) (*http.Client, error) {
 	client, err := sharedhttp.GetClient(sharedhttp.Options{
+		Route:                 routeFromContexts(contexts),
 		ProxyURL:              proxyURL,
 		Timeout:               xai.SSOConversionTimeout,
 		ResponseHeaderTimeout: 30 * time.Second,
@@ -240,22 +242,16 @@ func grokOAuthHasExplicitEntitlementDenial(body string) bool {
 		strings.Contains(lower, "no active grok subscription")
 }
 
-func createGrokHTTPClient(proxyURL string, noRedirect bool) (*http.Client, error) {
-	transport := &http.Transport{}
-	if strings.TrimSpace(proxyURL) != "" {
-		parsed, err := url.Parse(proxyURL)
-		if err != nil {
-			return nil, err
-		}
-		transport.Proxy = http.ProxyURL(parsed)
+func createGrokHTTPClient(proxyURL string, noRedirect bool, contexts ...context.Context) (*http.Client, error) {
+	client, err := sharedhttp.GetClient(sharedhttp.Options{Route: routeFromContexts(contexts), ProxyURL: proxyURL, Timeout: 120 * time.Second})
+	if err != nil {
+		return nil, err
 	}
-	client := &http.Client{Timeout: 120 * time.Second, Transport: transport}
+	clone := *client
 	if noRedirect {
-		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
+		clone.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}
-	return client, nil
+	return &clone, nil
 }
 
 func solveTurnstile(ctx context.Context) (string, error) {

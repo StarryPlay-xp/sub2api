@@ -784,6 +784,19 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 }
 
 func (s *AccountTestService) fetchUpstreamModelListWithObservation(ctx context.Context, account *Account) (*upstreamModelListFetchResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		if account.ID == 0 {
+			// The create form has no persistent account yet; honor its explicit node selection.
+			ctx, routeErr = contextForNodeEgress(ctx, s.accountRepo, account.ProxyID)
+		} else {
+			ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		}
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	started := time.Now().UTC()
 	models, body, req, err := s.fetchUpstreamModelListRequest(ctx, account)
 	result := &upstreamModelListFetchResult{Models: models, Body: body}
@@ -1367,7 +1380,7 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 		return nil, nil, newUpstreamModelSyncConfigError("No Antigravity access token is available", nil)
 	}
 
-	client, err := antigravity.NewClient(upstreamModelsProxyURL(account))
+	client, err := antigravity.NewClient(upstreamModelsProxyURL(account), ctx)
 	if err != nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Failed to configure Antigravity client", err)
 	}

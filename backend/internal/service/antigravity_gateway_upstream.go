@@ -19,6 +19,14 @@ import (
 
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 认证透传上游 Claude 请求
 func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	beginUpstreamResponseModelObservation(c)
 	startTime := time.Now()
 	sessionID := getSessionID(c)

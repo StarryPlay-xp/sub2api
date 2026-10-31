@@ -31,6 +31,14 @@ func (e *SystemOneUpstreamError) Error() string {
 }
 
 func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, account *Account, body []byte) (*SystemOneForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	started := time.Now()
 	if account == nil || !account.IsTypeSafe() || account.Type != AccountTypeAPIKey {
 		return nil, errors.New("invalid typesafe account")

@@ -16,7 +16,9 @@
 package httpclient
 
 import (
+	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"net"
 	"net/http"
 	"strings"
@@ -41,6 +43,7 @@ const (
 
 // Options 定义共享 HTTP 客户端的构建参数
 type Options struct {
+	Route                 *egress.Route // Typed account/node route; takes precedence over legacy ProxyURL.
 	ProxyURL              string        // 代理 URL（支持 http/https/socks5/socks5h）
 	Timeout               time.Duration // 请求总超时时间
 	ResponseHeaderTimeout time.Duration // 等待响应头超时时间
@@ -91,7 +94,16 @@ func buildClient(opts Options) (*http.Client, error) {
 
 	var rt http.RoundTripper = transport
 	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
-		rt = newValidatedTransport(transport)
+		if opts.Route != nil && opts.Route.Kind() == egress.WireGuard {
+			rt = &routedValidatedTransport{base: rt, route: opts.Route}
+		} else {
+			rt = newValidatedTransport(transport)
+		}
+	}
+	if opts.Route != nil {
+		rt = opts.Route.Wrap(rt)
+	} else {
+		rt = &contextRouteTransport{base: rt, options: opts}
 	}
 	rt = servertiming.WrapRoundTripper(rt)
 	return &http.Client{
@@ -128,6 +140,16 @@ func buildTransport(opts Options) (*http.Transport, error) {
 		return nil, fmt.Errorf("insecure_skip_verify is not allowed; install a trusted certificate instead")
 	}
 
+	if opts.Route != nil {
+		route := opts.Route
+		if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
+			route = route.RequirePublicTargets()
+		}
+		if err := route.ConfigureHTTP(transport); err != nil {
+			return nil, err
+		}
+		return transport, nil
+	}
 	_, parsed, err := proxyurl.Parse(opts.ProxyURL)
 	if err != nil {
 		return nil, err
@@ -144,8 +166,12 @@ func buildTransport(opts Options) (*http.Transport, error) {
 }
 
 func buildClientKey(opts Options) string {
+	keyRoute := strings.TrimSpace(opts.ProxyURL)
+	if opts.Route != nil {
+		keyRoute = opts.Route.PoolKey()
+	}
 	return fmt.Sprintf("%s|%s|%s|%t|%t|%t|%d|%d|%d",
-		strings.TrimSpace(opts.ProxyURL),
+		keyRoute,
 		opts.Timeout.String(),
 		opts.ResponseHeaderTimeout.String(),
 		opts.InsecureSkipVerify,
@@ -210,4 +236,58 @@ func (t *validatedTransport) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("validated transport base is nil")
 	}
 	return t.base.RoundTrip(req)
+}
+
+type routedValidatedTransport struct {
+	base  http.RoundTripper
+	route interface {
+		ValidateHost(context.Context, string) error
+	}
+}
+
+func (t *routedValidatedTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request == nil || request.URL == nil {
+		return nil, egress.ErrBlocked
+	}
+	if err := t.route.ValidateHost(request.Context(), request.URL.Hostname()); err != nil {
+		return nil, err
+	}
+	return t.base.RoundTrip(request)
+}
+func (t *routedValidatedTransport) CloseIdleConnections() {
+	if c, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
+}
+
+func GetClientForContext(ctx context.Context, opts Options) (*http.Client, error) {
+	if route := egress.FromContext(ctx); route != nil {
+		opts.Route = route
+	}
+	return GetClient(opts)
+}
+
+// Constructors without a context (e.g. batch workers) still honor the explicit
+// route carried by each request. A routed cached client is never mutated.
+type contextRouteTransport struct {
+	base    http.RoundTripper
+	options Options
+}
+
+func (t *contextRouteTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if route := egress.FromContext(request.Context()); route != nil {
+		options := t.options
+		options.Route = route
+		client, err := GetClient(options)
+		if err != nil {
+			return nil, err
+		}
+		return client.Transport.RoundTrip(request)
+	}
+	return t.base.RoundTrip(request)
+}
+func (t *contextRouteTransport) CloseIdleConnections() {
+	if c, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
 }

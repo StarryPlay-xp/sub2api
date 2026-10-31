@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"io"
 	"net/http"
 	"regexp"
@@ -99,6 +100,12 @@ type GeminiAuthURLResult struct {
 }
 
 func (s *GeminiOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI, projectID, oauthType, tierID string) (*GeminiAuthURLResult, error) {
+	var routeErr error
+	ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	state, err := geminicli.GenerateState()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate state: %w", err)
@@ -140,6 +147,7 @@ func (s *GeminiOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 		State:        state,
 		CodeVerifier: codeVerifier,
 		ProxyURL:     proxyURL,
+		EgressRoute:  egress.FromContext(ctx),
 		RedirectURI:  redirectURI,
 		ProjectID:    strings.TrimSpace(projectID),
 		TierID:       canonicalGeminiTierIDForOAuthType(oauthType, tierID),
@@ -456,6 +464,11 @@ func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExch
 		return nil, fmt.Errorf("invalid state")
 	}
 
+	var routeErr error
+	ctx, routeErr = contextForOAuthEgress(ctx, s.proxyRepo, session.EgressRoute, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
@@ -463,7 +476,6 @@ func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExch
 			proxyURL = proxy.URL()
 		}
 	}
-	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ProxyURL: %s", proxyURL)
 
 	redirectURI := session.RedirectURI
 
@@ -731,6 +743,12 @@ func isNonRetryableGeminiOAuthError(err error) bool {
 }
 
 func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*GeminiTokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	if account.Platform != PlatformGemini || account.Type != AccountTypeOAuth {
 		return nil, fmt.Errorf("account is not a Gemini OAuth account")
 	}
@@ -1039,7 +1057,7 @@ func fetchProjectIDFromResourceManager(ctx context.Context, accessToken, proxyUR
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
 
-	client, err := httpclient.GetClient(httpclient.Options{
+	client, err := httpclient.GetClientForContext(ctx, httpclient.Options{
 		ProxyURL:           strings.TrimSpace(proxyURL),
 		Timeout:            30 * time.Second,
 		ValidateResolvedIP: true,

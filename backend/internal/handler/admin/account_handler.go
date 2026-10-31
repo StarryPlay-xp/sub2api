@@ -1178,7 +1178,11 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
-	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+	editCtx := c.Request.Context()
+	if req.ProxyID != nil {
+		editCtx = service.WithExplicitEgressEdit(editCtx, accountID)
+	}
+	account, err := h.adminService.UpdateAccount(editCtx, accountID, &service.UpdateAccountInput{
 		Name:                  req.Name,
 		Notes:                 req.Notes,
 		Type:                  req.Type,
@@ -2354,7 +2358,11 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
-	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
+	editCtx := c.Request.Context()
+	if req.ProxyID != nil {
+		editCtx = service.WithExplicitEgressEdit(editCtx, req.AccountIDs...)
+	}
+	result, err := h.adminService.BulkUpdateAccounts(editCtx, &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
 		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
@@ -3107,6 +3115,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req struct {
+		ProxyID      *int64            `json:"proxy_id"`
 		Platform     string            `json:"platform" binding:"required"`
 		Type         string            `json:"type" binding:"required"`
 		BaseURL      string            `json:"base_url"`
@@ -3123,6 +3132,7 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	}
 
 	tempAccount := &service.Account{
+		ProxyID:  req.ProxyID,
 		Platform: req.Platform,
 		Type:     req.Type,
 		Credentials: map[string]any{

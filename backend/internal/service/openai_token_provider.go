@@ -132,6 +132,14 @@ func (p *OpenAITokenProvider) ensureMetrics() {
 
 // GetAccessToken returns a valid access_token.
 func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, p.accountRepo, account)
+		if routeErr != nil {
+			return "", routeErr
+		}
+	}
+
 	p.ensureMetrics()
 	if account == nil {
 		return "", errors.New("account is nil")

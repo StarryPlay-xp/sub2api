@@ -34,7 +34,7 @@ func TestFetchChatGPTSubscriptionExpiresAt(t *testing.T) {
 	chatGPTSubscriptionsURL = server.URL + "/backend-api/subscriptions"
 	t.Cleanup(func() { chatGPTSubscriptionsURL = oldURL })
 
-	got := fetchChatGPTSubscriptionExpiresAt(context.Background(), func(proxyURL string) (*req.Client, error) {
+	got := fetchChatGPTSubscriptionExpiresAt(context.Background(), func(_ context.Context, proxyURL string) (*req.Client, error) {
 		return req.C().SetTimeout(5 * time.Second), nil
 	}, "access-token", "", "acc_123")
 
@@ -74,7 +74,7 @@ func TestFetchChatGPTAccountInfo_SkipsExpiredWorkspaceCandidate(t *testing.T) {
 	chatGPTAccountsCheckURL = server.URL + "/backend-api/accounts/check/v4-2023-04-27"
 	t.Cleanup(func() { chatGPTAccountsCheckURL = oldURL })
 
-	got := fetchChatGPTAccountInfo(context.Background(), func(proxyURL string) (*req.Client, error) {
+	got := fetchChatGPTAccountInfo(context.Background(), func(_ context.Context, proxyURL string) (*req.Client, error) {
 		return req.C().SetTimeout(5 * time.Second), nil
 	}, "access-token", "", "org-expired-workspace")
 
@@ -111,7 +111,7 @@ func TestFetchChatGPTAccountInfo_SkipsDeactivatedWorkspaceCandidate(t *testing.T
 	chatGPTAccountsCheckURL = server.URL + "/backend-api/accounts/check/v4-2023-04-27"
 	t.Cleanup(func() { chatGPTAccountsCheckURL = oldURL })
 
-	got := fetchChatGPTAccountInfo(context.Background(), func(proxyURL string) (*req.Client, error) {
+	got := fetchChatGPTAccountInfo(context.Background(), func(_ context.Context, proxyURL string) (*req.Client, error) {
 		return req.C().SetTimeout(5 * time.Second), nil
 	}, "access-token", "", "org-deactivated-workspace")
 
@@ -340,7 +340,7 @@ func newChatGPTBackendTestServer(t *testing.T, cfg chatGPTBackendTestServerConfi
 // chatgpt.com，测试无法接管。给客户端一个短超时让它快速失败——该调用只写
 // PrivacyMode，不影响本组用例的断言。
 func newTestPrivacyClientFactory() PrivacyClientFactory {
-	return func(string) (*req.Client, error) {
+	return func(context.Context, string) (*req.Client, error) {
 		return req.C().SetTimeout(time.Second), nil
 	}
 }

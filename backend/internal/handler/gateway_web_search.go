@@ -197,7 +197,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			break
 		}
 		var failoverErr *service.UpstreamFailoverError
-		if !errors.As(err, &failoverErr) || !failoverErr.ShouldRetryNextAccount() {
+		if !errors.As(err, &failoverErr) || !failoverErr.ShouldRetryNextAccountContext(c.Request.Context()) {
 			break
 		}
 		failedAccounts[account.ID] = struct{}{}

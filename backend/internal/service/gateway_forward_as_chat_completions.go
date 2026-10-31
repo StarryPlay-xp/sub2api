@@ -33,6 +33,14 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	body []byte,
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
+	if s != nil && account != nil {
+		var routeErr error
+		ctx, routeErr = contextForAccountEgress(ctx, s.accountRepo, account)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	startTime := time.Now()
 
 	// 1. Parse Chat Completions request

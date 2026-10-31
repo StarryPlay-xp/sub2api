@@ -243,6 +243,10 @@ func (s *BatchImageCleanupService) callProviderCleanup(ctx context.Context, job 
 	if err != nil {
 		return err
 	}
+	ctx, err = contextForAccountEgress(ctx, s.AccountResolver, account)
+	if err != nil {
+		return err
+	}
 	if err := provider.Cleanup(ctx, job, account, target); err != nil {
 		if cleanupErrorIsNotFound(err) {
 			return nil

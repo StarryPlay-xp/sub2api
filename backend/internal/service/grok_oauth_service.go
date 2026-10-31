@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"net/http"
 	"strings"
 	"time"
@@ -66,6 +67,14 @@ type GrokAuthURLResult struct {
 }
 
 func (s *GrokOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI string) (*GrokAuthURLResult, error) {
+	if s != nil {
+		var routeErr error
+		ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	state, err := xai.GenerateState()
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusInternalServerError, "GROK_OAUTH_STATE_FAILED", "failed to generate state: %v", err)
@@ -102,6 +111,7 @@ func (s *GrokOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, 
 		ClientID:      xai.EffectiveClientID(),
 		Scope:         xai.EffectiveScope(),
 		ProxyURL:      proxyURL,
+		EgressRoute:   egress.FromContext(ctx),
 		RedirectURI:   redirectURI,
 		CreatedAt:     time.Now(),
 	})
@@ -173,6 +183,11 @@ func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchange
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_REDIRECT_URI_MISMATCH", "redirect_uri does not match the OAuth session")
 	}
 
+	var routeErr error
+	ctx, routeErr = contextForOAuthEgress(ctx, s.proxyRepo, session.EgressRoute, input.ProxyID)
+	if routeErr != nil {
+		return nil, routeErr
+	}
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
 		var err error
@@ -228,6 +243,14 @@ func (s *GrokOAuthService) RefreshToken(ctx context.Context, refreshToken, proxy
 }
 
 func (s *GrokOAuthService) ValidateRefreshToken(ctx context.Context, refreshToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	if s != nil {
+		var routeErr error
+		ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	proxyURL, err := s.proxyURL(ctx, proxyID)
 	if err != nil {
 		return nil, err
@@ -238,6 +261,14 @@ func (s *GrokOAuthService) ValidateRefreshToken(ctx context.Context, refreshToke
 // ValidateSSOToken converts a Web SSO cookie into Build OAuth tokens.
 // The raw sso_token is never stored on GrokTokenInfo or account credentials.
 func (s *GrokOAuthService) ValidateSSOToken(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	if s != nil {
+		var routeErr error
+		ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	ssoToken = strings.TrimSpace(ssoToken)
 	if ssoToken == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_SSO_TOKEN", "sso_token is required")
@@ -267,6 +298,14 @@ func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, 
 // AuthorizePassword logs in with email/password, converts the resulting SSO cookie
 // to Build OAuth, and returns OAuth tokens only. Password and raw SSO are never persisted.
 func (s *GrokOAuthService) AuthorizePassword(ctx context.Context, email, password string, proxyID *int64) (*GrokTokenInfo, error) {
+	if s != nil {
+		var routeErr error
+		ctx, routeErr = contextForNodeEgress(ctx, s.proxyRepo, proxyID)
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
+
 	if !s.passwordAuthEnabled() {
 		return nil, infraerrors.New(http.StatusForbidden, "GROK_OAUTH_PASSWORD_AUTH_DISABLED", "Grok password authorization is disabled")
 	}
@@ -309,6 +348,12 @@ func validateGrokTokenResponse(tokenResp *xai.TokenResponse) error {
 }
 
 func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error) {
+	var routeErr error
+	ctx, routeErr = contextForAccountEgress(ctx, s.proxyRepo, account)
+	if routeErr != nil {
+		return nil, routeErr
+	}
+
 	if account == nil || account.Platform != PlatformGrok {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_ACCOUNT", "account is not a Grok account")
 	}
