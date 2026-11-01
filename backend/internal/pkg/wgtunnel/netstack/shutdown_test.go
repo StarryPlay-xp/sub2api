@@ -16,8 +16,11 @@ func TestCloseUnblocksAndJoinsNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tun := dev.(*netTun)
-	defer tun.Close()
+	tun, ok := dev.(*netTun)
+	if !ok {
+		t.Fatal("unexpected tunnel type")
+	}
+	defer func() { _ = tun.Close() }()
 	packet := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData([]byte{1, 2, 3})})
 	defer packet.DecRef()
 	var packets stack.PacketBufferList
@@ -39,7 +42,7 @@ func TestCloseUnblocksAndJoinsNotification(t *testing.T) {
 		var wg sync.WaitGroup
 		for i := 0; i < 8; i++ {
 			wg.Add(1)
-			go func() { defer wg.Done(); tun.Close() }()
+			go func() { defer wg.Done(); _ = tun.Close() }()
 		}
 		wg.Wait()
 		close(finished)

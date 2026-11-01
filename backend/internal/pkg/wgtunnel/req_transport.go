@@ -31,11 +31,11 @@ func ConfigureReqClient(c *req.Client, dial DialContext) error {
 		if handshake != nil {
 			secured, _, err := handshake(ctx, addr, raw)
 			if err != nil {
-				raw.Close()
+				_ = raw.Close()
 				return nil, err
 			}
 			if secured == nil {
-				raw.Close()
+				_ = raw.Close()
 				return nil, errors.New("TLS handshake returned no connection")
 			}
 			return secured, nil
@@ -43,14 +43,14 @@ func ConfigureReqClient(c *req.Client, dial DialContext) error {
 		cfg := c.GetTLSClientConfig().Clone()
 		host, _, err := net.SplitHostPort(addr)
 		if err != nil {
-			raw.Close()
+			_ = raw.Close()
 			return nil, err
 		}
 		cfg.ServerName = host
 		cfg.NextProtos = []string{"h2", "http/1.1"}
 		secured := tls.Client(raw, cfg)
 		if err = secured.HandshakeContext(ctx); err != nil {
-			raw.Close()
+			_ = raw.Close()
 			return nil, err
 		}
 		return secured, nil

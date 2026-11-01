@@ -75,7 +75,7 @@ func TestImageUpdateVerificationRejectsMissingKeyAndMissingNode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			rows := sqlmock.NewRows([]string{"proxy_id", "config_ciphertext"})
 			if test.row {
 				rows.AddRow(7, "encrypted-secret")
@@ -97,7 +97,7 @@ func TestImageUpdateVerificationRejectsMissingKeyAndMissingNode(t *testing.T) {
 func TestImageUpdateVerificationRejectsWrongKey(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	oldKey, err := wgtunnel.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
 	cipher, err := oldKey.Seal(7, "private configuration")

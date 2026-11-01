@@ -58,8 +58,10 @@ func TestInternalConnectionRetryKeepsSeparateImmutableEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.Copy(io.Discard, res.Body)
-	res.Body.Close()
+	if _, err := io.Copy(io.Discard, res.Body); err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
 	recorder.Close()
 	if len(store.attempts) != 2 {
 		t.Fatalf("got %d attempts", len(store.attempts))

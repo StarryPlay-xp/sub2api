@@ -51,7 +51,7 @@ func TestPooledDirectConnectionDoesNotSurviveBindingChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { count.Add(1); w.Write([]byte("ok")) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { count.Add(1); _, _ = w.Write([]byte("ok")) }))
 	defer server.Close()
 	tr := &http.Transport{}
 	if err = route.ConfigureHTTP(tr); err != nil {
@@ -63,8 +63,10 @@ func TestPooledDirectConnectionDoesNotSurviveBindingChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 	store.mu.Lock()
 	store.record = Record{Kind: WireGuard, NodeID: 10, AccountID: 1, Revision: 2}
 	store.mu.Unlock()
@@ -181,16 +183,16 @@ func TestActiveConnectionClosesAfterAccountEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	accepted := make(chan net.Conn, 1)
 	go func() { c, _ := listener.Accept(); accepted <- c }()
 	conn, err := route.DialContext(context.Background(), "tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	peer := <-accepted
-	defer peer.Close()
+	defer func() { _ = peer.Close() }()
 	store.mu.Lock()
 	store.record.Revision++
 	store.mu.Unlock()

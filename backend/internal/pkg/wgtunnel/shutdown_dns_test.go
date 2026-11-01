@@ -20,7 +20,7 @@ func TestCloseCancelsPendingDNS(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer dns.Close()
+			defer func() { _ = dns.Close() }()
 			// Receive but never answer: shutdown must cancel real socket I/O,
 			// rather than wait for the normal DNS deadline to expire.
 			if err := dns.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
@@ -31,7 +31,7 @@ func TestCloseCancelsPendingDNS(t *testing.T) {
 				if dial {
 					conn, err := client.DialContext(context.Background(), "tcp", "pending.invalid:443")
 					if conn != nil {
-						conn.Close()
+						_ = conn.Close()
 					}
 					operation <- err
 				} else {

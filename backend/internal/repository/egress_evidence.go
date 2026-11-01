@@ -44,7 +44,7 @@ func (s *WireGuardStore) PruneTrafficHistory(ctx context.Context, now time.Time)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, q := range []struct {
 		sql    string
 		before time.Time
@@ -75,7 +75,7 @@ func (s *WireGuardStore) ReadAttempts(ctx context.Context, requestID string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []egress.Attempt{}
 	for rows.Next() {
 		var a egress.Attempt
@@ -120,7 +120,7 @@ func (s *WireGuardStore) ReadExitSummaries(ctx context.Context, queries []egress
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var i int
 		var state, ip string

@@ -93,7 +93,7 @@ func (s *ImageUpdateService) call(ctx context.Context, method, path string, body
 	if err != nil {
 		return nil, errors.New("host image updater is unavailable")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var status ImageUpdateStatus
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&status) != nil {
 		return nil, errors.New("invalid updater response")
@@ -172,7 +172,7 @@ func (s *ImageUpdateService) verifyWireGuard(ctx context.Context, expected []int
 		}
 	}
 	rowErr := rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil || rowErr != nil {
 		return errors.New("WG configuration cannot be read with the retained key")
 	}

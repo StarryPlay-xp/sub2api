@@ -18,7 +18,7 @@ func TestDNSRemainsInsideTunnel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { dns.Close() })
+	t.Cleanup(func() { _ = dns.Close() })
 	var queries atomic.Int32
 	go func() {
 		buffer := make([]byte, 2048)
@@ -39,7 +39,9 @@ func TestDNSRemainsInsideTunnel(t *testing.T) {
 			}
 			packet, err := answer.Pack()
 			if err == nil {
-				dns.WriteTo(packet, addr)
+				if _, err := dns.WriteTo(packet, addr); err != nil {
+					return
+				}
 			}
 		}
 	}()

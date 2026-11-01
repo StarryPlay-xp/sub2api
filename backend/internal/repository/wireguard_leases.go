@@ -12,7 +12,7 @@ func (s *WireGuardStore) ClaimRuntime(ctx context.Context, id, version int64, ru
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var paused bool
 	var current int64
 	if err = tx.QueryRowContext(ctx, `SELECT paused,config_version FROM wireguard_nodes WHERE proxy_id=$1 FOR UPDATE`, id).Scan(&paused, &current); err != nil {

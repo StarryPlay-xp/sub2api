@@ -72,7 +72,7 @@ func ProbeWithService(ctx context.Context, dial DialContext, family, service str
 	if err != nil {
 		return Evidence{}, errors.New("exit verification failed on selected route")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return Evidence{}, errors.New("exit verification service returned an error")
 	}

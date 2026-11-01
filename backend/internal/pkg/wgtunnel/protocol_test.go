@@ -52,11 +52,13 @@ func TestTunnelProtocols(t *testing.T) {
 	client, server := pairedRuntimes(t)
 	cert, roots := testTLS(t)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(r.Proto)) })
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(r.Proto)) })
 	mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Write([]byte("data: first\n\n"))
-		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: first\n\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
 		<-r.Context().Done()
 	})
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -64,10 +66,10 @@ func TestTunnelProtocols(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer c.CloseNow()
+		defer func() { _ = c.CloseNow() }()
 		typ, data, err := c.Read(r.Context())
 		if err == nil {
-			c.Write(r.Context(), typ, data)
+			_ = c.Write(r.Context(), typ, data)
 		}
 	})
 	listener, err := server.network.ListenTCPAddrPort(netip.MustParseAddrPort("10.77.0.1:8443"))
@@ -75,11 +77,11 @@ func TestTunnelProtocols(t *testing.T) {
 		t.Fatal(err)
 	}
 	hs := &http.Server{Handler: mux, TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}}
-	if err = http2.ConfigureServer(hs, &http2.Server{}); err != nil {
+	if err = http2.ConfigureServer(hs, &http2.Server{}); err != nil { //nolint:staticcheck // Exercise the same HTTP/2 adapter as the supported transport.
 		t.Fatal(err)
 	}
-	go hs.Serve(tls.NewListener(listener, hs.TLSConfig))
-	t.Cleanup(func() { hs.Close() })
+	go func() { _ = hs.Serve(tls.NewListener(listener, hs.TLSConfig)) }()
+	t.Cleanup(func() { _ = hs.Close() })
 	transport := &http.Transport{Proxy: nil, DialContext: client.DialContext, TLSClientConfig: &tls.Config{RootCAs: roots}, ForceAttemptHTTP2: true}
 	t.Cleanup(transport.CloseIdleConnections)
 	hc := &http.Client{Transport: transport, Timeout: 5 * time.Second}
@@ -88,7 +90,7 @@ func TestTunnelProtocols(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if r.ProtoMajor != 2 {
 			t.Fatal("HTTP/2 was not negotiated")
 		}
@@ -104,7 +106,7 @@ func TestTunnelProtocols(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		line, err := bufio.NewReader(r.Body).ReadString('\n')
 		if err != nil || line != "data: first\n" {
 			t.Fatal("stream did not flush")
@@ -125,7 +127,7 @@ func TestTunnelProtocols(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer c.CloseNow()
+		defer func() { _ = c.CloseNow() }()
 		if err = c.Write(ctx, websocket.MessageText, []byte("echo")); err != nil {
 			t.Fatal(err)
 		}

@@ -73,7 +73,13 @@ func (b *MeteredBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 		eps[0] = endpoint{addr}
 		return 1, nil
 	}
-	return []conn.ReceiveFunc{recv}, uint16(s.LocalAddr().(*net.UDPAddr).Port), nil
+	addr, ok := s.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		_ = s.Close()
+		b.socket = nil
+		return nil, 0, errors.New("unexpected UDP local address")
+	}
+	return []conn.ReceiveFunc{recv}, uint16(addr.Port), nil
 }
 func (b *MeteredBind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	b.mu.Lock()

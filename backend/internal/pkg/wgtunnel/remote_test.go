@@ -67,7 +67,7 @@ func TestAuthorizedRemoteExit(t *testing.T) {
 		if err != nil {
 			t.Fatal("fingerprint TLS through WG failed")
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		data, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 		if err != nil || strings.TrimSpace(string(data)) != evidence.IP {
 			t.Fatal("fingerprint exit mismatch")

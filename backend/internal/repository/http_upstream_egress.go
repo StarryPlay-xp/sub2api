@@ -13,7 +13,10 @@ import (
 // have migrated to typed routing. The legacy constructor remains for isolated
 // transport tests and non-account callers.
 func NewRoutedHTTPUpstream(cfg *config.Config, router *egress.Router) service.HTTPUpstream {
-	s := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	s, ok := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	if !ok {
+		panic("unexpected HTTP upstream implementation")
+	}
 	s.egressRouter = router
 	return s
 }

@@ -29,7 +29,7 @@ func bootstrapPlanFile(t *testing.T) string {
 func TestWireGuardBootstrapNeverReplaysCompletedPlan(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT value FROM settings").WithArgs(wireGuardBootstrapKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(`{"node_id":7,"account_ids":[1,2,3]}`))
@@ -51,7 +51,7 @@ func TestWireGuardBootstrapTransactionAndFailureRollback(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			box, err := wgtunnel.NewSecretBox(make([]byte, 32))
 			require.NoError(t, err)
 			mock.ExpectBegin()
@@ -92,7 +92,7 @@ func TestWireGuardBootstrapTransactionAndFailureRollback(t *testing.T) {
 func TestWireGuardBootstrapRejectsUnexpectedAccounts(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	box, err := wgtunnel.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
 	mock.ExpectBegin()

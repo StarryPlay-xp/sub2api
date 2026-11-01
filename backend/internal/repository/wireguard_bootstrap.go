@@ -31,11 +31,11 @@ func (wireGuardBootstrapPlan) GoString() string { return "[WireGuard bootstrap p
 
 func readWireGuardBootstrapPlan(path string) (wireGuardBootstrapPlan, error) {
 	var plan wireGuardBootstrapPlan
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G703: deployment-owned WIREGUARD_BOOTSTRAP_FILE, never a request path; regular-file, owner-only and size checks follow.
 	if err != nil {
 		return plan, errors.New("WG bootstrap plan cannot be opened")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > wgtunnel.MaxConfigBytes+4096 {
 		return plan, errors.New("WG bootstrap plan must be a small owner-only regular file")
@@ -43,11 +43,11 @@ func readWireGuardBootstrapPlan(path string) (wireGuardBootstrapPlan, error) {
 	decoder := json.NewDecoder(io.LimitReader(f, wgtunnel.MaxConfigBytes+4097))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&plan) != nil {
-		return wireGuardBootstrapPlan{}, errors.New("Invalid WG bootstrap plan")
+		return wireGuardBootstrapPlan{}, errors.New("invalid WG bootstrap plan")
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
-		return wireGuardBootstrapPlan{}, errors.New("Invalid WG bootstrap plan")
+		return wireGuardBootstrapPlan{}, errors.New("invalid WG bootstrap plan")
 	}
 	plan.Name = strings.TrimSpace(plan.Name)
 	if plan.Name == "" || len([]rune(plan.Name)) > 100 || len(plan.AccountIDs) == 0 || len(plan.AccountIDs) > 100 {
@@ -56,7 +56,7 @@ func readWireGuardBootstrapPlan(path string) (wireGuardBootstrapPlan, error) {
 	sort.Slice(plan.AccountIDs, func(i, j int) bool { return plan.AccountIDs[i] < plan.AccountIDs[j] })
 	for i, id := range plan.AccountIDs {
 		if id <= 0 || (i > 0 && plan.AccountIDs[i-1] == id) {
-			return wireGuardBootstrapPlan{}, errors.New("Invalid WG bootstrap account IDs")
+			return wireGuardBootstrapPlan{}, errors.New("invalid WG bootstrap account IDs")
 		}
 	}
 	return plan, nil
@@ -70,7 +70,7 @@ func (s *WireGuardStore) BootstrapWireGuard(ctx context.Context, path string, bo
 	if err != nil {
 		return errors.New("WG bootstrap database unavailable")
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7267426371251)`); err != nil {
 		return errors.New("WG bootstrap lock failed")
 	}
@@ -78,7 +78,7 @@ func (s *WireGuardStore) BootstrapWireGuard(ctx context.Context, path string, bo
 	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=$1`, wireGuardBootstrapKey).Scan(&existing)
 	if err == nil {
 		if box == nil {
-			return errors.New("Completed WG bootstrap still requires its stable encryption key")
+			return errors.New("completed WG bootstrap still requires its stable encryption key")
 		}
 		return nil
 	} // Successful first deployment is never replayed.
@@ -120,7 +120,7 @@ func (s *WireGuardStore) BootstrapWireGuard(ctx context.Context, path string, bo
 		ids = append(ids, id)
 	}
 	rowErr := rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil || rowErr != nil || len(ids) != len(plan.AccountIDs) {
 		return errors.New("WG bootstrap account set or existing egress changed; review deployment plan")
 	}

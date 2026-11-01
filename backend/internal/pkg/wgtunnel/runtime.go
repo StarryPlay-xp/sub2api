@@ -155,7 +155,7 @@ func (r *Runtime) DialContext(ctx context.Context, network, address string) (net
 		r.mu.Lock()
 		if r.closed {
 			r.mu.Unlock()
-			c.Close()
+			_ = c.Close()
 			return nil, ErrBlocked
 		}
 		r.connections[t] = struct{}{}
@@ -195,7 +195,7 @@ func (r *Runtime) Close() {
 		_ = r.dev.Down()
 		r.operations.Wait()
 		for _, c := range connections {
-			c.Close()
+			_ = c.Close()
 		}
 		r.dev.Close()
 	})

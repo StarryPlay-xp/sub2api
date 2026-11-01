@@ -433,7 +433,7 @@ func (pc *PingConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	default:
 		return 0, fmt.Errorf("ping write: wrong net.Addr type")
 	}
-	if !((na.Is4() && pc.laddr.addr.Is4()) || (na.Is6() && pc.laddr.addr.Is6())) {
+	if (!na.Is4() || !pc.laddr.addr.Is4()) && (!na.Is6() || !pc.laddr.addr.Is6()) {
 		return 0, fmt.Errorf("ping write: mismatched protocols")
 	}
 
@@ -697,7 +697,7 @@ func (tnet *Net) exchange(ctx context.Context, server netip.Addr, q dnsmessage.Q
 		if d, ok := ctx.Deadline(); ok && !d.IsZero() {
 			err := c.SetDeadline(d)
 			if err != nil {
-				c.Close()
+				_ = c.Close()
 				return dnsmessage.Parser{}, dnsmessage.Header{}, err
 			}
 		}
@@ -706,7 +706,7 @@ func (tnet *Net) exchange(ctx context.Context, server netip.Addr, q dnsmessage.Q
 		// before returning so stack teardown cannot race leftover DNS cleanup.
 		canceled := make(chan struct{})
 		stop := context.AfterFunc(ctx, func() {
-			c.Close()
+			_ = c.Close()
 			close(canceled)
 		})
 		var p dnsmessage.Parser
@@ -719,14 +719,15 @@ func (tnet *Net) exchange(ctx context.Context, server netip.Addr, q dnsmessage.Q
 		if !stop() {
 			<-canceled
 		}
-		c.Close()
+		_ = c.Close()
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
 		if err != nil {
-			if err == context.Canceled {
+			switch err {
+			case context.Canceled:
 				err = errCanceled
-			} else if err == context.DeadlineExceeded {
+			case context.DeadlineExceeded:
 				err = errTimeout
 			}
 			return dnsmessage.Parser{}, dnsmessage.Header{}, err
@@ -839,7 +840,9 @@ func (tnet *Net) tryOneName(ctx context.Context, name string, qtype dnsmessage.T
 				Server: server.String(),
 			}
 			if err == errNoSuchHost {
-				lastErr.(*net.DNSError).IsNotFound = true
+				if dnsErr, ok := lastErr.(*net.DNSError); ok {
+					dnsErr.IsNotFound = true
+				}
 				return p, server.String(), lastErr
 			}
 		}
@@ -1042,9 +1045,10 @@ func (tnet *Net) DialContext(ctx context.Context, network, address string) (net.
 		select {
 		case <-ctx.Done():
 			err := ctx.Err()
-			if err == context.Canceled {
+			switch err {
+			case context.Canceled:
 				err = errCanceled
-			} else if err == context.DeadlineExceeded {
+			case context.DeadlineExceeded:
 				err = errTimeout
 			}
 			return nil, &net.OpError{Op: "dial", Err: err}

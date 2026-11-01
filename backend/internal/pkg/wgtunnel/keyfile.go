@@ -19,7 +19,7 @@ func LoadSecretBox(path string) (*SecretBox, error) {
 	if err != nil {
 		return nil, errors.New("WireGuard encryption key file cannot be opened")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("WireGuard encryption key must be a regular owner-only file")

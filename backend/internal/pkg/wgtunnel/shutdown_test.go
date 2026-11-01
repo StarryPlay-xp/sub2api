@@ -15,7 +15,7 @@ func TestConcurrentCloseWaitsForFinalCounters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	received := make(chan struct{})
 	serverDone := make(chan struct{})
 	go func() {
@@ -24,7 +24,7 @@ func TestConcurrentCloseWaitsForFinalCounters(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		b := make([]byte, 1024)
 		for {
 			n, err := c.Read(b)
@@ -34,7 +34,9 @@ func TestConcurrentCloseWaitsForFinalCounters(t *testing.T) {
 				default:
 					close(received)
 				}
-				c.Write(b[:n])
+				if _, err := c.Write(b[:n]); err != nil {
+					return
+				}
 			}
 			if err != nil {
 				return

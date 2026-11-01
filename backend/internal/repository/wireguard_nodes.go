@@ -30,7 +30,7 @@ func (s *WireGuardStore) CreateNode(ctx context.Context, input wgtunnel.NodeInpu
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO proxies(name,protocol,host,port,status,fallback_mode,expiry_warn_days,expires_at)
  VALUES($1,'wireguard',$2,$3,'active','none',7,$4) RETURNING id`, name, host, n, input.ExpiresAt).Scan(&id)
@@ -59,7 +59,7 @@ func (s *WireGuardStore) ReplaceNode(ctx context.Context, id, expectedVersion in
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var version int64
 	err = tx.QueryRowContext(ctx, `SELECT w.config_version FROM proxies p JOIN wireguard_nodes w ON w.proxy_id=p.id WHERE p.id=$1 AND p.deleted_at IS NULL AND p.protocol='wireguard' FOR UPDATE OF p,w`, id).Scan(&version)
 	if err != nil {

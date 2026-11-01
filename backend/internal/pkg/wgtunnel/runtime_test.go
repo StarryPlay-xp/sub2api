@@ -20,8 +20,12 @@ func freeUDPPort(t *testing.T) int {
 	if e != nil {
 		t.Fatal(e)
 	}
-	p := s.LocalAddr().(*net.UDPAddr).Port
-	s.Close()
+	addr, ok := s.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("unexpected UDP local address")
+	}
+	p := addr.Port
+	_ = s.Close()
 	return p
 }
 
@@ -104,10 +108,10 @@ func TestRealUserspaceTunnelAndRevocation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer l.Close()
-	h := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("tunneled")) })}
-	defer h.Close()
-	go h.Serve(l)
+	defer func() { _ = l.Close() }()
+	h := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("tunneled")) })}
+	defer func() { _ = h.Close() }()
+	go func() { _ = h.Serve(l) }()
 	tr := &http.Transport{DialContext: client.DialContext}
 	defer tr.CloseIdleConnections()
 	hc := &http.Client{Transport: tr, Timeout: 5 * time.Second}
@@ -116,7 +120,7 @@ func TestRealUserspaceTunnelAndRevocation(t *testing.T) {
 		t.Fatal(e)
 	}
 	data, e := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if e != nil || string(data) != "tunneled" {
 		t.Fatal("unexpected tunnel response")
 	}
