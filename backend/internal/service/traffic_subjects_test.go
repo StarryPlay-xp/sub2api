@@ -73,3 +73,55 @@ func TestTrafficLiveIdentityCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, store.identityReads)
 }
+
+func TestTrafficRankingSearchTotalPreservesConcentrationAndTotals(t *testing.T) {
+	store := &trafficSubjectsFake{data: TrafficSubjectData{Unattributed: traffic.Bytes{ClientIn: 100}}}
+	for id := int64(1); id <= 45; id++ {
+		name := "ordinary key"
+		if id >= 44 {
+			name = "Needle key"
+		}
+		store.data.Current = append(store.data.Current, TrafficSubjectStats{
+			TrafficIdentity: TrafficIdentity{SubjectType: "api_key", UserID: 1, APIKeyID: &id, APIKeyName: &name},
+			Bytes:           traffic.Bytes{ClientIn: uint64(id) * 10}, Requests: 1,
+		})
+	}
+	svc := &ServiceTrafficService{Subjects: store}
+	q := TrafficSubjectQuery{Subject: "api_key", Sort: "total_bytes", Order: "desc", Page: 1, PageSize: 200}
+	baseline, err := svc.Ranking(context.Background(), q)
+	require.NoError(t, err)
+	require.Equal(t, 45, baseline.Total)
+	q.Q = "nEeDlE"
+	q.PageSize = 1
+	for _, tc := range []struct {
+		page int
+		id   int64
+	}{{1, 45}, {2, 44}, {3, 0}} {
+		q.Page = tc.page
+		result, err := svc.Ranking(context.Background(), q)
+		require.NoError(t, err)
+		require.Equal(t, 2, result.Total)
+		require.Equal(t, baseline.Concentration, result.Concentration)
+		require.Equal(t, 45, result.Concentration.Subjects)
+		require.Equal(t, baseline.Totals, result.Totals)
+		if tc.id == 0 {
+			require.Empty(t, result.Items)
+			continue
+		}
+		require.Len(t, result.Items, 1)
+		require.Equal(t, tc.id, result.Items[0].ID())
+		for _, item := range baseline.Items {
+			if item.ID() == tc.id {
+				require.Equal(t, item.Share, result.Items[0].Share)
+			}
+		}
+	}
+	q.Q = "no matching key"
+	q.Page = 1
+	empty, err := svc.Ranking(context.Background(), q)
+	require.NoError(t, err)
+	require.Zero(t, empty.Total)
+	require.Empty(t, empty.Items)
+	require.Equal(t, baseline.Concentration, empty.Concentration)
+	require.Equal(t, baseline.Totals, empty.Totals)
+}

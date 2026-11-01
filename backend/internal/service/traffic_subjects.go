@@ -212,7 +212,7 @@ func (s *ServiceTrafficService) Ranking(ctx context.Context, q TrafficSubjectQue
 		return TrafficRanking{}, err
 	}
 	items, totals := combineTrafficSubjects(q, d)
-	result := TrafficRanking{Window: d.Window, PreviousWindow: d.PreviousWindow, Subject: q.Subject, Sort: q.Sort, Order: q.Order, Page: q.Page, PageSize: q.PageSize, Total: len(items), Totals: totals, Items: []TrafficSubjectStats{}}
+	result := TrafficRanking{Window: d.Window, PreviousWindow: d.PreviousWindow, Subject: q.Subject, Sort: q.Sort, Order: q.Order, Page: q.Page, PageSize: q.PageSize, Totals: totals, Items: []TrafficSubjectStats{}}
 	sort.Slice(items, func(i, j int) bool {
 		a, b := items[i].Bytes.Vector()[6], items[j].Bytes.Vector()[6]
 		if a == b {
@@ -252,6 +252,9 @@ func (s *ServiceTrafficService) Ranking(ctx context.Context, q TrafficSubjectQue
 		}
 	}
 	items = filtered
+	// Pagination and CSV consumers need the searchable result count. Site-wide
+	// totals and concentration above deliberately retain their unfiltered scope.
+	result.Total = len(items)
 	sort.Slice(items, func(i, j int) bool {
 		a, b := trafficSortValue(items[i], q.Sort), trafficSortValue(items[j], q.Sort)
 		if a == nil || b == nil {

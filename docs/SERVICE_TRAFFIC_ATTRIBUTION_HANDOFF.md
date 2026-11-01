@@ -18,7 +18,7 @@
 
 排行默认 `sort=total_bytes&order=desc&page=1&page_size=20`，page_size 最大 200。排序支持提示词列出的全部十种字段。null 始终排最后，同值按主体 id 升序。`sort=growth` 必须带 `compare=previous`。
 
-`share`、`totals` 和集中度比例的分母始终为当前窗口全站已归属加未归属字节。`user_id` 仅支持 api_key，影响候选主体、total 和 concentration；q 不区分大小写，只筛 items，不改变 total/concentration。这意味着搜索时 total 不是搜索命中数，是提示词约定的候选总数。
+`share`、`totals` 和集中度比例的分母始终为当前窗口全站已归属加未归属字节。`user_id` 仅支持 api_key，影响候选主体、total 和 concentration；q 不区分大小写，筛选 items，并使 total 返回筛选后的可分页结果数。concentration（包括 subjects）、totals 和 share 的全站分母不受 q 影响。例如 45 个候选 Key 中搜索命中 2 个，total=2，concentration.subjects=45。
 
 环比选紧邻当前窗口之前、小时桶数相同的区间：当前尾部不足一小时仍计一个桶。上一窗口早于归因启动、超出保留期或存在异常样本/进程状态等质量问题时 complete=false；过期部分不会因为清理任务尚未执行而混入结果。只在上一窗口有字节或请求的主体也返回，当前为零。历史不补空桶。
 
@@ -89,7 +89,7 @@ type TrafficRankingData = {
   order: 'desc' | 'asc'
   page: number
   page_size: number
-  total: number
+  total: number                    // q 与 user_id 过滤后的可分页结果数
   items: SubjectStats[]
   totals: {
     attributed: { bytes: Bytes; total_bytes: string; requests: number }
@@ -191,7 +191,7 @@ WS 上游连接持有可切换的计数句柄，每次 Acquire 返回租约时�
 
 ## 与提示词的差异和补充
 
-1. **三个接口的路径、字段、排序项和参数不变。** 额外拒绝重复参数以避免歧义；非法实时 limit 使用 TRAFFIC_PAGE_INVALID。
+1. **三个接口的路径、字段、排序项和参数不变；按后续需求纠正 total 语义为 q 过滤后的命中数**，用于分页和 CSV 导出结束判断。原提示词将 total 与集中度范围写在一起；现在只有集中度（含 subjects）不受 q 影响，totals/share 继续保持全站口径。额外拒绝重复参数以避免歧义；非法实时 limit 使用 TRAFFIC_PAGE_INVALID。
 2. 选择“绑定前字节保留未归属”，不回迁；计数的放行边界包含鉴权中间件现有的前置检查。
 3. 整实例计数改为由同一次采样的主体增量推导，避免维护两套原子计数导致采样瞬间不守恒；原整实例 API 及数据口径不变。
 4. 迁移额外新增起点元数据表，保证 90 天清理不改变 attribution_started_at。已有迁移未改写。
@@ -223,7 +223,38 @@ GOCACHE=/private/tmp/sub2api-wg-gocache go test ./internal/pkg/traffic -run '^$'
 - Handler 覆盖 403/404/503/500、参数 reason、默认小时粒度和空数组响应；真实普通/Google 鉴权及标准/简易模式四个分支有归因测试。
 - 热路径基准在 Apple M5 Pro / darwin arm64 执行 3 次：原 Add 中位数 1.557 ns/op；新未归属 1.619 ns/op（约 +4.0%）；已归属 1.599 ns/op（约 +2.7%，增加 0.042 ns）；WS 切换句柄 2.032 ns/op（约 +30.5%，增加 0.475 ns）。均为 0 B/op、0 allocs/op。这是无争用微基准，不代表端到端吞吐或 20,000 主体压测。
 
-未执行：前端测试/构建、完整应用界面联调、真实付费供应商调用、20,000 主体长时间负载测试、发布构建或生产升级。现有本机验收应用容器未替换，本次利用其旁边已有的隔离数据库完成后端验证；用户验收前的新接口联调需要启动包含本次后端代码的测试进程，并由前端任务协调当前构建。
+初次交付 `bf0ed0768` 未执行前端测试/构建或替换验收应用。以下补充记录本日后续已授权的搜索修正与本地整体构建。真实付费供应商调用、20,000 主体长时间负载测试、正式发布和生产升级均未执行。
+
+## 搜索总数修正与本地验收环境（2026-11-01）
+
+排行 `total` 在 q 过滤后、分页前计算；`concentration.subjects/top1/top5/top10`、`totals` 和 `share` 分母保持过滤前范围。单元测试覆盖 45 个 Key 搜索命中 2 个、第二页、超出末页、零命中，并核对集中度、全站总量和匹配项 share 不变。PostgreSQL 集成断言同步改为搜索命中数。
+
+本轮检查：
+
+- `go test -tags=unit ./internal/service -run '^TestTrafficRanking' -count=1`：通过。
+- 本机隔离库 `wireguard_test` 上 `go test -tags=integration ./internal/repository -run '^TestTrafficSubjectPersistenceQueriesAndRetention$' -count=1 -v -timeout=240s`：通过；使用临时 schema。
+- `golangci-lint run --timeout=30m`：0 issues（使用已有临时工具及缓存目录）。
+- 前端依次执行 `./node_modules/.bin/vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts`、`./node_modules/.bin/vue-tsc -b`、`./node_modules/.bin/vite build`：均通过，i18n 3 项通过。系统 pnpm 首次尝试因自动安装依赖失败而退出，未通过重装解决；后续直接使用工作目录已有工具完成相同构建流程。
+- `./node_modules/.bin/vitest run src/views/admin/traffic/__tests__ src/components/admin/traffic src/api/admin/__tests__/trafficSubjects.spec.ts src/components/layout/__tests__/AppSidebar.spec.ts`：7 个文件、58 项通过。
+- 从当前工作目录（包括未提交前端）执行 `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags embed -trimpath -ldflags='-s -w -X main.BuildType=source'`：通过，输出到本机验收临时目录。未变更版本号。
+
+验收入口：`http://127.0.0.1:18085/admin/traffic`；沿用已有测试登录账号，凭据仍在本机私有临时配置中，不写入仓库或日志。
+
+| 用途 | 名称 |
+| --- | --- |
+| 应用容器 | `sub2api-traffic-acceptance-app-1` |
+| 数据库容器 | `sub2api-traffic-acceptance-postgres-1` |
+| 数据库 | `traffic_acceptance` |
+| Redis 容器 | `sub2api-traffic-acceptance-redis-1` |
+| 新增本机合成模型容器 | `sub2api-traffic-acceptance-fixture-1` |
+
+复用验收数据库和数据卷，只替换应用程序并重建应用容器，旧测试程序已备份。应用启动自动执行迁移 254，已从迁移表及主体小时表确认。原先的 WG 合成账号在本轮操作前已被软删除，因此未复用旧流量生成脚本，也未请求环境中其他模型账号；改为专用测试分组、两个测试 Key 和仅验收容器网络内可见的合成模型容器，不开放额外宿主机端口。
+
+产物核对：本次生成 `TrafficView-BA9fitt3.js`；构建 JS 中存在 `/admin/traffic`、“流量监控”和三个归因接口。实际访问 `/admin/traffic` 返回 200，并对页面引用及相关的 8 个 JS 资源逐一核对 SHA-256，全部与当前工作目录构建产物一致。构建前后按文件内容哈希及 Git index 校验，前端源码、未提交内容和暂存状态均未变化。
+
+接口联调：两个 Key 各执行一次流式、一次普通请求，4 次均返回 200；流式响应收到 `[DONE]`，执行期间实时接口返回非零速率和 in_flight。保存后排行有 2 个 Key，搜索“搜索对照”仅命中 1 个且 total=1、concentration.subjects=2，空搜索结果 total=0；全站 totals、用户/Key 合计与详情历史校验通过。首轮生成已归属载荷 469304 字节。
+
+本轮未重跑后端全量单元测试、全部前端测试、前端 lint 或 race；执行了上述直接相关回归、静态检查、完整构建和实际 HTTP 联调。未进行浏览器交互式人工验收，该步骤留给用户；实时列表只展示最近一分钟活跃主体，停流后消失是正常行为。
 
 ## 本次修改文件清单
 

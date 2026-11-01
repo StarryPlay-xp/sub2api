@@ -82,7 +82,8 @@ func TestTrafficSubjectPersistenceQueriesAndRetention(t *testing.T) {
 	q.PageSize = 20
 	rank, err = svc.Ranking(ctx, q)
 	require.NoError(t, err)
-	require.Equal(t, 2, rank.Total)
+	require.Equal(t, 1, rank.Total)
+	require.Equal(t, 2, rank.Concentration.Subjects)
 	require.Len(t, rank.Items, 1)
 	require.Equal(t, int64(12), *rank.Items[0].APIKeyID)
 	require.True(t, *rank.Items[0].APIKeyDeleted)
