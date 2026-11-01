@@ -6,6 +6,7 @@
 
 import { apiClient, buildGatewayUrl } from '../client'
 import type { PaginatedResponse } from '@/types'
+import type { TrafficInterval, TrafficPeak, TrafficRange, TrafficSampleQuality } from './wireguard'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
 
@@ -1316,6 +1317,88 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
   await apiClient.put('/admin/ops/settings/metric-thresholds', thresholds)
 }
 
+// 整实例服务流量（service_payload_v1）：应用可见载荷，不是网卡或云厂商账单。
+// 接口只接受 range/interval/start/end，不能携带运维页的分组、平台等筛选参数。
+export type ServiceTrafficDirection = 'client_in' | 'client_out' | 'upstream_out' | 'upstream_in'
+export type ServiceTrafficRateKey = ServiceTrafficDirection | 'in' | 'out' | 'total'
+// 十进制整数字符串，避免 JS 大整数精度丢失
+export type ServiceTrafficBytes = Record<ServiceTrafficDirection, string>
+export type ServiceTrafficPeaks = Partial<Record<ServiceTrafficRateKey, TrafficPeak>>
+
+export interface ServiceTrafficBucket {
+  start: string
+  interval: TrafficInterval
+  bytes: ServiceTrafficBytes
+  peaks: ServiceTrafficPeaks | null
+  quality: TrafficSampleQuality
+}
+
+export interface ServiceTrafficReport {
+  range: TrafficRange
+  interval: TrafficInterval
+  start: string
+  end: string
+  requested_start: string
+  requested_end: string
+  retained_from: string
+  as_of: string
+  end_clamped: boolean
+  metric_basis: 'service_payload_v1'
+  scope: 'single_instance_history'
+  peak_window_seconds: number
+  bytes: ServiceTrafficBytes
+  in_bytes: string
+  out_bytes: string
+  total_bytes: string
+  peaks: ServiceTrafficPeaks | null
+  quality: TrafficSampleQuality
+  history: ServiceTrafficBucket[]
+  has_records: boolean
+  incomplete: boolean
+  concurrent_runtimes: boolean
+  saved_at: string | null
+}
+
+export type ServiceTrafficCurrentState = 'warming_up' | 'sampled' | 'invalid_interval'
+
+export interface ServiceTrafficCurrent {
+  bytes_per_second: Partial<Record<ServiceTrafficRateKey, number>>
+  sampled_at: string
+  window_seconds: number
+  state: ServiceTrafficCurrentState
+}
+
+export interface ServiceTrafficResponse {
+  report: ServiceTrafficReport
+  current: ServiceTrafficCurrent
+  last_persisted_at: string | null
+  persistence_error: boolean
+}
+
+export interface ServiceTrafficParams {
+  range: TrafficRange
+  interval?: TrafficInterval
+  start?: string
+  end?: string
+}
+
+export async function getServiceTraffic(
+  params: ServiceTrafficParams,
+  options: OpsRequestOptions = {}
+): Promise<ServiceTrafficResponse> {
+  const query: ServiceTrafficParams = { range: params.range }
+  if (params.interval) query.interval = params.interval
+  if (params.range === 'custom') {
+    if (params.start) query.start = params.start
+    if (params.end) query.end = params.end
+  }
+  const { data } = await apiClient.get<ServiceTrafficResponse>('/admin/ops/service-traffic', {
+    params: query,
+    signal: options.signal
+  })
+  return data
+}
+
 export const opsAPI = {
   getDashboardSnapshotV2,
   getDashboardOverview,
@@ -1328,6 +1411,7 @@ export const opsAPI = {
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
   getRealtimeTrafficSummary,
+  getServiceTraffic,
   subscribeQPS,
 
   // Legacy unified endpoints
