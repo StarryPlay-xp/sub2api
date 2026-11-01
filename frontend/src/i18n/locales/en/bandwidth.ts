@@ -59,7 +59,12 @@ export default {
     clear: 'Clear',
     cancel: 'Cancel',
     placeholder: 'e.g. 100',
-    hint: 'Saved in this browser only, for comparison. It does not throttle traffic.',
+    hint: 'Saved on the server and shared across devices, for comparison only. It does not throttle traffic.',
+    loadFailed: 'Could not load bandwidth limits. Please refresh and retry.',
+    saveFailed: 'Saving the bandwidth limit could not be confirmed. Please refresh and retry.',
+    conflict: 'Another device changed this limit. Refresh and review the latest value before saving again.',
+    saved: 'Bandwidth limit saved on the server.',
+    saving: 'This limit is being saved. Please try again shortly.',
     invalid: 'Enter a number greater than 0.',
     usage: 'Peak uses {percent} of the limit',
     usageUnknown: 'Peak unknown',
@@ -170,6 +175,6 @@ export default {
     retention: 'Retention',
     retentionValue: 'Minute data 7 days, hour data 90 days',
     limitStorage: 'Bandwidth limits',
-    limitStorageValue: 'Saved in this browser, only for comparison on this page'
+    limitStorageValue: 'Saved on the server and shared across devices, for comparison only'
   }
 }

@@ -20,7 +20,7 @@ func ProvideServiceTraffic(db *sql.DB, gateway *service.OpenAIGatewayService) *s
 	store := &ServiceTrafficStore{DB: db}
 	collector := traffic.NewCollector(store)
 	gateway.SetTrafficMeter(collector.Meter)
-	return &service.ServiceTrafficService{Collector: collector, Store: store}
+	return &service.ServiceTrafficService{Collector: collector, Store: store, Limits: &BandwidthLimitStore{DB: db}}
 }
 func (s *ServiceTrafficStore) Save(ctx context.Context, c traffic.Snapshot) error {
 	if c.RuntimeID == "" || c.StartedAt.IsZero() || c.At.Before(c.StartedAt) {

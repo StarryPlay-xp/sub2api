@@ -198,6 +198,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/user-concurrency", h.Admin.Ops.GetUserConcurrencyStats)
 		ops.GET("/account-availability", h.Admin.Ops.GetAccountAvailability)
 		ops.GET("/service-traffic", h.Admin.Ops.GetServiceTraffic)
+		ops.GET("/bandwidth-limits", h.Admin.Ops.GetBandwidthLimits)
+		ops.PUT("/bandwidth-limits/host", h.Admin.Ops.UpdateBandwidthLimit)
+		ops.PUT("/bandwidth-limits/nodes/:id", h.Admin.Ops.UpdateBandwidthLimit)
 		ops.GET("/realtime-traffic", h.Admin.Ops.GetRealtimeTrafficSummary)
 
 		// Alerts (rules + events)

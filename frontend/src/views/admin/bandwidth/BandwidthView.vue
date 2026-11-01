@@ -278,5 +278,6 @@ const warnings = computed(() => {
 function refreshAll() {
   feed.refresh()
   nodeFeed.refresh()
+  void limits.refresh()
 }
 </script>

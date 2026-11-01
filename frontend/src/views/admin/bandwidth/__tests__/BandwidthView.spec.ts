@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import BandwidthView from '../BandwidthView.vue'
-import { BANDWIDTH_LIMITS_KEY } from '../useBandwidthLimits'
+import { getBandwidthLimits, saveBandwidthLimit } from '@/api/admin/bandwidth'
 import { hostResponse, wgDetails, wgReport } from './fixtures'
+
+vi.mock('@/api/admin/bandwidth', () => ({ getBandwidthLimits: vi.fn(), saveBandwidthLimit: vi.fn() }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn(), showInfo: vi.fn() }) }))
 
 const mockGetServiceTraffic = vi.fn()
 const mockListProxies = vi.fn()
@@ -68,6 +71,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   routeState.query = {}
+  vi.mocked(getBandwidthLimits).mockResolvedValue({ host: { mbps: null, version: '' }, nodes: {} })
+  vi.mocked(saveBandwidthLimit).mockImplementation(async (_id, value) => ({ ...value, version: 'saved' }))
   mockGetServiceTraffic.mockResolvedValue(hostResponse())
   mockListProxies.mockResolvedValue({ items: [proxy(11, 'Tokyo relay'), proxy(12, 'Legacy node')], total: 2, page: 1, page_size: 100, pages: 1 })
   mockDetails.mockResolvedValue(wgDetails())
@@ -139,7 +144,7 @@ describe('BandwidthView', () => {
     wrapper.unmount()
   })
 
-  it('saves a host bandwidth limit in this browser and shows the headroom', async () => {
+  it('saves a host bandwidth limit on the server and shows the headroom', async () => {
     const wrapper = create()
     await flushPromises()
     const hero = wrapper.get('[data-testid="host-hero"]')
@@ -148,7 +153,8 @@ describe('BandwidthView', () => {
     await hero.get('form').trigger('submit')
     await flushPromises()
 
-    expect(JSON.parse(localStorage.getItem(BANDWIDTH_LIMITS_KEY) || '{}').host).toBe(20)
+    expect(saveBandwidthLimit).toHaveBeenCalledWith(null, { mbps: 20, version: '' }, expect.any(AbortSignal))
+    expect(localStorage.getItem('sub2api:bandwidth-limits:v1')).toBeNull()
     expect(wrapper.get('[data-testid="host-hero"]').text()).toContain('bandwidth.limit.usage(84%)')
     expect(wrapper.get('[data-testid="host-hero"]').text()).toContain('bandwidth.limit.levelWarning')
     wrapper.unmount()

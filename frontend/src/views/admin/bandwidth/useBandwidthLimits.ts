@@ -1,44 +1,115 @@
-import { computed } from 'vue'
-import { useLocalStorage } from '@vueuse/core'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
+import { getBandwidthLimits, saveBandwidthLimit, type BandwidthLimits } from '@/api/admin/bandwidth'
+import { normalizeLimit } from '@/utils/bandwidthLimits'
 
-// 带宽上限只用于本页对比展示，保存在当前浏览器，不写入后端，也不影响任何限速。
-export const BANDWIDTH_LIMITS_KEY = 'sub2api:bandwidth-limits:v1'
-const MAX_MBPS = 1_000_000
+export { normalizeLimit } from '@/utils/bandwidthLimits'
+export const LIMITS_POLL_MS = 15_000
+const emptyLimit = () => ({ mbps: null, version: '' })
 
-interface StoredLimits {
-  host: number | null
-  nodes: Record<string, number>
-}
-
-export function normalizeLimit(value: unknown): number | null {
-  const number = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(number) && number > 0 && number <= MAX_MBPS ? number : null
-}
-
+// Shared server settings only. Browser values are deliberately never uploaded:
+// stale local caches must not overwrite another device's configuration.
 export function useBandwidthLimits() {
-  const stored = useLocalStorage<StoredLimits>(
-    BANDWIDTH_LIMITS_KEY,
-    { host: null, nodes: {} },
-    { mergeDefaults: true }
-  )
+  const stored = ref<BandwidthLimits>({ host: emptyLimit(), nodes: {} })
+  const loaded = ref(false)
+  const { t } = useI18n()
+  const app = useAppStore()
+  const pending = new Map<string, AbortController>()
+  let readController: AbortController | null = null
+  let sequence = 0
+  let disposed = false
+  let loadErrorShown = false
+  let refreshAfterWrites = false
+  let timer: ReturnType<typeof setInterval> | undefined
 
-  const hostLimit = computed(() => normalizeLimit(stored.value.host))
-
-  function setHostLimit(value: number | null) {
-    stored.value = { ...stored.value, host: normalizeLimit(value) }
-  }
-
+  const hostLimit = computed(() => normalizeLimit(stored.value.host.mbps))
   function nodeLimit(id: number) {
-    return normalizeLimit(stored.value.nodes?.[String(id)])
+    return normalizeLimit(stored.value.nodes[String(id)]?.mbps)
   }
 
-  function setNodeLimit(id: number, value: number | null) {
-    const nodes = { ...(stored.value.nodes ?? {}) }
-    const limit = normalizeLimit(value)
-    if (limit === null) delete nodes[String(id)]
-    else nodes[String(id)] = limit
-    stored.value = { ...stored.value, nodes }
+  async function refresh() {
+    if (disposed || pending.size) return
+    const current = ++sequence
+    readController?.abort()
+    const controller = new AbortController()
+    readController = controller
+    try {
+      const value = await getBandwidthLimits(controller.signal)
+      if (disposed || current !== sequence) return
+      stored.value = value
+      loaded.value = true
+      loadErrorShown = false
+    } catch {
+      if (disposed || controller.signal.aborted || current !== sequence) return
+      if (!loadErrorShown) app.showError(t('bandwidth.limit.loadFailed'))
+      loadErrorShown = true
+    }
   }
 
-  return { hostLimit, setHostLimit, nodeLimit, setNodeLimit }
+  async function save(nodeId: number | null, value: number | null) {
+    if (disposed) return
+    if (!loaded.value) await refresh()
+    if (disposed || !loaded.value) return
+    const key = nodeId === null ? 'host' : String(nodeId)
+    if (pending.has(key)) {
+      app.showInfo(t('bandwidth.limit.saving'))
+      return
+    }
+    const mbps = value === null ? null : normalizeLimit(value)
+    if (value !== null && mbps === null) {
+      app.showError(t('bandwidth.limit.invalid'))
+      return
+    }
+    const version = (nodeId === null ? stored.value.host : stored.value.nodes[key])?.version ?? ''
+    // Invalidate any older read before writing; only acknowledged values are displayed.
+    sequence++
+    readController?.abort()
+    const controller = new AbortController()
+    pending.set(key, controller)
+    try {
+      const saved = await saveBandwidthLimit(nodeId, { mbps, version }, controller.signal)
+      if (disposed) return
+      if (nodeId === null) stored.value = { ...stored.value, host: saved }
+      else stored.value = { ...stored.value, nodes: { ...stored.value.nodes, [key]: saved } }
+      app.showSuccess(t('bandwidth.limit.saved'))
+    } catch (error) {
+      if (disposed || controller.signal.aborted) return
+      const status = (error as { status?: number }).status
+      const conflict = status === 409
+      app.showError(t(conflict ? 'bandwidth.limit.conflict' : 'bandwidth.limit.saveFailed'))
+      refreshAfterWrites = true
+    } finally {
+      pending.delete(key)
+      if (refreshAfterWrites && pending.size === 0 && !disposed) {
+        refreshAfterWrites = false
+        await refresh()
+      }
+    }
+  }
+
+  function refreshVisible() {
+    if (document.visibilityState !== 'hidden') void refresh()
+  }
+  onMounted(() => {
+    void refresh()
+    timer = setInterval(refreshVisible, LIMITS_POLL_MS)
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
+  })
+  onUnmounted(() => {
+    disposed = true
+    sequence++
+    readController?.abort()
+    for (const controller of pending.values()) controller.abort()
+    if (timer) clearInterval(timer)
+    window.removeEventListener('focus', refreshVisible)
+    document.removeEventListener('visibilitychange', refreshVisible)
+  })
+
+  return {
+    hostLimit, nodeLimit, refresh,
+    setHostLimit: (value: number | null) => save(null, value),
+    setNodeLimit: (id: number, value: number | null) => save(id, value)
+  }
 }

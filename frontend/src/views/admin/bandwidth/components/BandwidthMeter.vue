@@ -109,7 +109,7 @@ import { computed, nextTick, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { headroomLevel } from '@/utils/bandwidthSeries'
-import { normalizeLimit } from '../useBandwidthLimits'
+import { normalizeLimit } from '@/utils/bandwidthLimits'
 
 const props = defineProps<{
   peakMbps: number | null

@@ -14,6 +14,7 @@ type ServiceTrafficRepository interface {
 type ServiceTrafficService struct {
 	Collector *traffic.Collector
 	Store     ServiceTrafficRepository
+	Limits    BandwidthLimitRepository
 }
 
 func (s *ServiceTrafficService) Close() {

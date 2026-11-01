@@ -59,7 +59,12 @@ export default {
     clear: '清除',
     cancel: '取消',
     placeholder: '例如 100',
-    hint: '只保存在当前浏览器，用于对比，不会限制速率。',
+    hint: '保存在服务端，各设备共享，用于对比，不会限制速率。',
+    loadFailed: '带宽上限加载失败，请刷新重试。',
+    saveFailed: '带宽上限保存失败，尚未确认保存，请刷新后重试。',
+    conflict: '其他设备已修改此上限，请刷新确认最新值后再保存。',
+    saved: '带宽上限已保存到服务端。',
+    saving: '正在保存此上限，请稍后再试。',
     invalid: '请输入大于 0 的数字。',
     usage: '峰值占上限 {percent}',
     usageUnknown: '峰值未知',
@@ -170,6 +175,6 @@ export default {
     retention: '保留期限',
     retentionValue: '分钟数据 7 天，小时数据 90 天',
     limitStorage: '带宽上限',
-    limitStorageValue: '保存在当前浏览器，仅用于本页对比'
+    limitStorageValue: '保存在服务端，各设备共享，仅用于对比'
   }
 }
