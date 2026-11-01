@@ -71,9 +71,7 @@
         >
           {{ nodeFeed.error.value }}
         </p>
-        <div v-else-if="!nodeFeed.loaded.value" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div v-for="index in 2" :key="index" class="h-[360px] animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-700/50"></div>
-        </div>
+        <div v-else-if="!nodeFeed.loaded.value" class="h-40 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-700/50"></div>
         <div
           v-else-if="!nodeFeed.nodes.value.length"
           class="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 px-6 py-10 text-center dark:border-dark-600"
@@ -82,16 +80,12 @@
           <p class="text-sm font-medium text-gray-600 dark:text-dark-200">{{ t('bandwidth.nodes.empty') }}</p>
           <p class="max-w-md text-xs text-gray-400 dark:text-dark-500">{{ t('bandwidth.nodes.emptyHint') }}</p>
         </div>
-        <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <WireGuardNodeCard
-            v-for="node in nodeFeed.nodes.value"
-            :key="node.proxy.id"
-            :node="node"
-            :limit="limits.nodeLimit(node.proxy.id)"
-            @open="dialogNodeId = $event"
-            @update:limit="limits.setNodeLimit"
-          />
-        </div>
+        <NodeBandwidthTable
+          v-else
+          :nodes="nodeFeed.nodes.value"
+          :limit-of="limits.nodeLimit"
+          @open="detailNodeId = $event"
+        />
       </section>
 
       <!-- 统计口径与数据质量 -->
@@ -148,6 +142,17 @@
       @close="selected = null"
     />
 
+    <NodeDetailDialog
+      v-if="detailNode"
+      :node="detailNode"
+      :range="range"
+      mode="bandwidth"
+      :limit-mbps="limits.nodeLimit(detailNode.proxy.id)"
+      @close="detailNodeId = null"
+      @manage="manageNode"
+      @update:limit="limits.setNodeLimit"
+    />
+
     <WireGuardDialog
       v-if="dialogNodeId !== null"
       :node-id="dialogNodeId"
@@ -164,6 +169,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import WireGuardDialog from '@/components/admin/proxy/WireGuardDialog.vue'
 import LiveSubjectsCard from '@/components/admin/traffic/LiveSubjectsCard.vue'
+import NodeDetailDialog from '@/components/admin/traffic/NodeDetailDialog.vue'
 import SubjectDetailDialog from '@/components/admin/traffic/SubjectDetailDialog.vue'
 import SubjectRankingCard from '@/components/admin/traffic/SubjectRankingCard.vue'
 import TrafficRangeBar from '@/components/admin/traffic/TrafficRangeBar.vue'
@@ -174,7 +180,7 @@ import type { TrafficSubjectIdentity } from '@/api/admin/trafficSubjects'
 import { formatSampleTime, isMissingTime } from '@/utils/trafficFormat'
 import HostBandwidthHero from './components/HostBandwidthHero.vue'
 import PeakTrendChart from './components/PeakTrendChart.vue'
-import WireGuardNodeCard from './components/WireGuardNodeCard.vue'
+import NodeBandwidthTable from './components/NodeBandwidthTable.vue'
 import { useBandwidthLimits } from './useBandwidthLimits'
 import { useServiceTrafficFeed } from './useServiceTrafficFeed'
 import { useWireGuardNodes } from './useWireGuardNodes'
@@ -185,7 +191,15 @@ const { range, options: rangeOptions } = usePresetRange()
 const feed = useServiceTrafficFeed(range)
 const nodeFeed = useWireGuardNodes(range)
 const limits = useBandwidthLimits()
+// 节点详情为监控视图；配置管理仍使用 IP 管理里的 WireGuard 弹窗。
+const detailNodeId = ref<number | null>(null)
 const dialogNodeId = ref<number | null>(null)
+const detailNode = computed(() => nodeFeed.nodes.value.find((node) => node.proxy.id === detailNodeId.value) ?? null)
+
+function manageNode(id: number) {
+  detailNodeId.value = null
+  dialogNodeId.value = id
+}
 const selected = ref<TrafficSubjectIdentity | null>(null)
 const liveCard = ref<InstanceType<typeof LiveSubjectsCard> | null>(null)
 const rankingCard = ref<InstanceType<typeof SubjectRankingCard> | null>(null)

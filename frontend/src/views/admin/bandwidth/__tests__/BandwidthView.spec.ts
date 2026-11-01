@@ -4,6 +4,7 @@ import BandwidthView from '../BandwidthView.vue'
 import { getBandwidthLimits, saveBandwidthLimit } from '@/api/admin/bandwidth'
 import { hostResponse, wgDetails, wgReport } from './fixtures'
 import { liveData, rankingData } from '@/components/admin/traffic/__tests__/fixtures'
+import { egressDetail } from '@/components/admin/traffic/__tests__/egressFixtures'
 
 vi.mock('@/api/admin/bandwidth', () => ({ getBandwidthLimits: vi.fn(), saveBandwidthLimit: vi.fn() }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn(), showInfo: vi.fn() }) }))
@@ -21,6 +22,11 @@ vi.mock('@/api/admin/trafficSubjects', () => ({
   getTrafficRanking: (...args: unknown[]) => mockRanking(...args),
   getTrafficLive: (...args: unknown[]) => mockLive(...args),
   getTrafficSubject: vi.fn()
+}))
+
+vi.mock('@/api/admin/trafficEgress', () => ({
+  getTrafficEgress: vi.fn(),
+  getTrafficEgressRoute: vi.fn(async () => egressDetail())
 }))
 
 vi.mock('@/api/admin/ops', () => ({
@@ -212,11 +218,34 @@ describe('BandwidthView', () => {
     wrapper.unmount()
   })
 
-  it('opens the existing WireGuard dialog for node details', async () => {
+  it('opens node monitoring details and hands configuration to the existing WireGuard dialog', async () => {
     const wrapper = create()
     await flushPromises()
-    await wrapper.get('[data-testid="wg-node-11"]').findAll('button').find((button) => button.text() === 'bandwidth.nodes.details')!.trigger('click')
+    await wrapper.get('[data-testid="wg-node-11"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="node-detail"]').text()).toContain('Tokyo relay')
+    expect(wrapper.get('[data-testid="node-detail"] [data-testid="egress-account-31"]').text()).toContain('account-31')
+    expect(wrapper.find('[data-testid="wg-dialog"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="node-detail-manage"]').trigger('click')
+    expect(wrapper.find('[data-testid="node-detail"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="wg-dialog"]').text()).toBe('11')
+    wrapper.unmount()
+  })
+
+  it('saves a node bandwidth limit from the node details', async () => {
+    const wrapper = create()
+    await flushPromises()
+    await wrapper.get('[data-testid="wg-node-11"]').trigger('click')
+    const limit = wrapper.get('[data-testid="node-detail-limit"]')
+    await limit.findAll('button').find((button) => button.text() === 'bandwidth.limit.set')!.trigger('click')
+    await limit.get('input').setValue('50')
+    await limit.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(saveBandwidthLimit).toHaveBeenCalledWith(11, { mbps: 50, version: '' }, expect.any(AbortSignal))
+    // 节点同一秒合计峰值 33.55 Mbps 占 50 Mbps 上限 67%
+    expect(wrapper.get('[data-testid="wg-node-11"] [data-testid="node-usage"]').text()).toContain('67%')
     wrapper.unmount()
   })
 

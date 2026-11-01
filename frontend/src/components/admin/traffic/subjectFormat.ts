@@ -92,8 +92,8 @@ export interface GrowthView {
   percentText: string
 }
 
-/** 环比：上一时段为 0 而本期有流量时标为新增，不计算无意义的百分比。 */
-export function growthView(stats: TrafficSubjectStats): GrowthView {
+/** 环比（用户、Key 与出口通用）：上一时段为 0 而本期有流量时标为新增，不计算无意义的百分比。 */
+export function growthView(stats: Pick<TrafficSubjectStats, 'growth_bytes'> & { previous: { total_bytes: string } | null }): GrowthView {
   const growth = parseSignedBytes(stats.growth_bytes)
   const previous = parseSignedBytes(stats.previous?.total_bytes)
   if (growth === null || previous === null) return { direction: 'unknown', bytesText: '—', percentText: '' }

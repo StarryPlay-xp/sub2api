@@ -4,10 +4,8 @@ import { Bar, Line } from 'vue-chartjs'
 import BandwidthMeter from '../components/BandwidthMeter.vue'
 import HostBandwidthHero from '../components/HostBandwidthHero.vue'
 import PeakTrendChart from '../components/PeakTrendChart.vue'
-import WireGuardNodeCard from '../components/WireGuardNodeCard.vue'
 import { formatSampleTime } from '@/utils/trafficFormat'
-import type { Proxy } from '@/types'
-import { PEAK_AT, hostCurrent, hostReport, wgDetails, wgReport } from './fixtures'
+import { PEAK_AT, hostCurrent, hostReport } from './fixtures'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -157,42 +155,5 @@ describe('PeakTrendChart', () => {
     })
     expect(concurrent.get('[data-testid="trend-overlay"]').text()).toContain('bandwidth.trend.concurrent')
     expect(concurrent.findComponent(Bar).exists()).toBe(true)
-  })
-})
-
-describe('WireGuardNodeCard', () => {
-  const proxy = { id: 11, name: 'Tokyo relay', protocol: 'wireguard' } as unknown as Proxy
-
-  function create(node: Record<string, unknown> = {}, limit: number | null = null) {
-    return mount(WireGuardNodeCard, {
-      props: { node: { proxy, details: wgDetails(), report: wgReport(), error: '', ...node }, limit },
-      global: { stubs }
-    })
-  }
-
-  it('uses the same-second sent + received peak for the node', () => {
-    const wrapper = create({}, 50)
-    expect(wrapper.get('[data-testid="node-peak"]').text()).toContain('33.55')
-    expect(wrapper.get('[data-testid="node-peak"]').text()).not.toContain('39.74')
-    expect(wrapper.text()).toContain(formatSampleTime('2026-11-01T02:05:00Z'))
-    expect(wrapper.get('[data-testid="node-current"]').text()).toBe('3 Mbps')
-    expect(wrapper.get('[data-testid="node-state"]').text()).toContain('bandwidth.nodes.running')
-    expect(wrapper.text()).toContain('bandwidth.limit.usage(67%)')
-  })
-
-  it('marks legacy history, paused nodes and opens details', async () => {
-    const wrapper = create({ report: wgReport({ peak_history: null }), details: wgDetails('not_running', { paused: true }) })
-    expect(wrapper.get('[data-testid="node-peak"]').text()).toContain('bandwidth.host.unknown')
-    expect(wrapper.text()).toContain('bandwidth.nodes.legacy')
-    expect(wrapper.get('[data-testid="node-state"]').text()).toContain('bandwidth.nodes.paused')
-    expect(wrapper.get('[data-testid="node-current"]').text()).toBe('—')
-    await wrapper.findAll('button').find((button) => button.text() === 'bandwidth.nodes.details')!.trigger('click')
-    expect(wrapper.emitted('open')).toEqual([[11]])
-  })
-
-  it('surfaces per-node load errors', () => {
-    const wrapper = create({ report: null, error: 'node failed' })
-    expect(wrapper.get('[role="alert"]').text()).toBe('node failed')
-    expect(wrapper.get('[data-testid="node-peak"]').text()).toContain('—')
   })
 })

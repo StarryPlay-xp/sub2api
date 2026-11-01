@@ -79,6 +79,9 @@
       </template>
     </ol>
 
+    <!-- 上游这一段按出口拆分：直连、代理与各 WG 节点 -->
+    <EgressBreakdown v-if="showEgress" :data="egress ?? null" :error="egressError ?? ''" @open="emit('open-route', $event)" />
+
     <p class="mt-6 border-t border-gray-100 pt-4 text-xs leading-relaxed text-gray-500 dark:border-dark-700 dark:text-dark-400">
       {{ t('traffic.relay.note') }}
     </p>
@@ -90,10 +93,20 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { ServiceTrafficDirection, ServiceTrafficReport } from '@/api/admin/ops'
+import type { EgressRouteStats, TrafficEgressData } from '@/api/admin/trafficEgress'
 import { formatByteCount, formatMbps } from '@/utils/trafficFormat'
 import { useBandwidthPalette } from '@/views/admin/bandwidth/useBandwidthPalette'
+import EgressBreakdown from './EgressBreakdown.vue'
 
-const props = defineProps<{ report: ServiceTrafficReport | null }>()
+const props = defineProps<{
+  report: ServiceTrafficReport | null
+  // 不传时不展示出口构成（例如尚未接入出口统计的页面）。
+  showEgress?: boolean
+  egress?: TrafficEgressData | null
+  egressError?: string
+}>()
+
+const emit = defineEmits<{ 'open-route': [route: EgressRouteStats] }>()
 
 const { t } = useI18n()
 const palette = useBandwidthPalette()

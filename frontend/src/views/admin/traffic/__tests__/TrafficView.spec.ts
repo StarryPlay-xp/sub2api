@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import TrafficView from '../TrafficView.vue'
-import { hostResponse } from '@/views/admin/bandwidth/__tests__/fixtures'
+import { hostResponse, wgDetails, wgReport } from '@/views/admin/bandwidth/__tests__/fixtures'
 import { detailData, rankingData } from '@/components/admin/traffic/__tests__/fixtures'
+import { egressDetail, egressReport, egressRoute } from '@/components/admin/traffic/__tests__/egressFixtures'
 import { REPORT_POLL_MS } from '@/views/admin/bandwidth/useServiceTrafficFeed'
 
 const mockGetServiceTraffic = vi.fn()
@@ -19,6 +20,31 @@ vi.mock('@/api/admin/trafficSubjects', () => ({
   getTrafficRanking: (...args: unknown[]) => mockRanking(...args),
   getTrafficSubject: (...args: unknown[]) => mockSubject(...args),
   getTrafficLive: vi.fn()
+}))
+
+const mockEgress = vi.fn()
+const mockEgressRoute = vi.fn()
+
+vi.mock('@/api/admin/trafficEgress', () => ({
+  getTrafficEgress: (...args: unknown[]) => mockEgress(...args),
+  getTrafficEgressRoute: (...args: unknown[]) => mockEgressRoute(...args)
+}))
+
+const mockListProxies = vi.fn()
+const mockDetails = vi.fn()
+const mockTraffic = vi.fn()
+
+vi.mock('@/api/admin/proxies', () => ({
+  proxiesAPI: { list: (...args: unknown[]) => mockListProxies(...args) }
+}))
+
+vi.mock('@/api/admin/wireguard', () => ({
+  details: (...args: unknown[]) => mockDetails(...args),
+  traffic: (...args: unknown[]) => mockTraffic(...args)
+}))
+
+vi.mock('@/components/admin/proxy/WireGuardDialog.vue', () => ({
+  default: { props: ['nodeId'], template: '<div data-testid="wg-dialog">{{ nodeId }}</div>' }
 }))
 
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn(), showInfo: vi.fn() }) }))
@@ -62,6 +88,13 @@ beforeEach(() => {
   mockGetServiceTraffic.mockResolvedValue(hostResponse())
   mockRanking.mockResolvedValue(rankingData())
   mockSubject.mockResolvedValue(detailData())
+  mockListProxies.mockResolvedValue({ items: [{ id: 11, name: 'Tokyo relay', protocol: 'wireguard' }], total: 1, page: 1, page_size: 100, pages: 1 })
+  mockDetails.mockResolvedValue(wgDetails())
+  mockTraffic.mockResolvedValue(wgReport())
+  mockEgress.mockResolvedValue(egressReport())
+  mockEgressRoute.mockImplementation(async (type: 'direct' | 'proxy' | 'wireguard', id: number) =>
+    egressDetail(egressRoute(type, type === 'direct' ? null : id))
+  )
 })
 
 afterEach(() => {
@@ -109,6 +142,56 @@ describe('TrafficView', () => {
     wrapper.unmount()
   })
 
+  it('shows WireGuard tunnel traffic for the same range and opens node details', async () => {
+    const wrapper = create()
+    await flushPromises()
+    expect(mockTraffic).toHaveBeenCalledWith(11, { range: '24h' }, expect.anything())
+    expect(wrapper.get('[data-testid="node-traffic-11"]').text()).toContain('1.5 GiB')
+
+    await wrapper.get('[data-testid="node-traffic-11"]').trigger('click')
+    expect(wrapper.get('[data-testid="node-detail"]').text()).toContain('Tokyo relay')
+    expect(wrapper.find('[data-testid="node-detail-limit"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="node-detail-manage"]').trigger('click')
+    expect(wrapper.get('[data-testid="wg-dialog"]').text()).toBe('11')
+    wrapper.unmount()
+  })
+
+  it('splits the upstream hop by egress and opens node or egress details', async () => {
+    const wrapper = create()
+    await flushPromises()
+    expect(mockEgress).toHaveBeenCalledWith({ range: '24h' }, expect.anything())
+    expect(wrapper.get('[data-testid="relay-path"] [data-testid="egress-wireguard:11"]').text()).toContain('Tokyo relay')
+    expect(wrapper.get('[data-testid="node-traffic-11"]').text()).toContain('traffic.nodes.service(1 GiB)')
+
+    // WG 出口在节点列表中：打开节点详情，同时加载经此节点的服务流量
+    await wrapper.get('[data-testid="egress-wireguard:11"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="node-detail"]').exists()).toBe(true)
+    expect(mockEgressRoute).toHaveBeenLastCalledWith('wireguard', 11, { range: '24h', compare: true }, expect.anything())
+    expect(wrapper.get('[data-testid="node-detail"] [data-testid="egress-tile-difference"]').text()).toContain('+128 MiB')
+    wrapper.unmount()
+
+    // 直连打开出口详情
+    const direct = create()
+    await flushPromises()
+    await direct.get('[data-testid="egress-direct:0"]').trigger('click')
+    await flushPromises()
+    expect(direct.find('[data-testid="egress-detail"]').exists()).toBe(true)
+    expect(mockEgressRoute).toHaveBeenLastCalledWith('direct', 0, { range: '24h', compare: true }, expect.anything())
+    direct.unmount()
+  })
+
+  it('keeps the page usable when the backend has no egress statistics', async () => {
+    mockEgress.mockRejectedValue({ status: 404 })
+    const wrapper = create()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="egress-error"]').text()).toBe('traffic.egress.errors.unsupported')
+    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('1.5 GiB')
+    expect(wrapper.find('[data-testid="node-traffic-11"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('refreshes the report and the ranking together', async () => {
     const wrapper = create()
     await flushPromises()
@@ -116,6 +199,8 @@ describe('TrafficView', () => {
     await flushPromises()
     expect(mockGetServiceTraffic).toHaveBeenCalledTimes(2)
     expect(mockRanking).toHaveBeenCalledTimes(2)
+    expect(mockTraffic).toHaveBeenCalledTimes(2)
+    expect(mockEgress).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

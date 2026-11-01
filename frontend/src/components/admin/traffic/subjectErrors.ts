@@ -31,6 +31,7 @@ export function subjectErrorMessage(error: unknown, t: Translate): string {
       return t('traffic.errors.retentionExceeded')
     case 'TRAFFIC_SUBJECT_NOT_FOUND':
       return t('traffic.errors.notFound')
+    case 'TRAFFIC_ROUTE_INVALID':
     case 'TRAFFIC_SUBJECT_INVALID':
     case 'TRAFFIC_SORT_INVALID':
     case 'TRAFFIC_COMPARE_REQUIRED':
@@ -45,4 +46,17 @@ export function subjectErrorMessage(error: unknown, t: Translate): string {
   }
   if (value.status === 503) return t('traffic.errors.unavailable')
   return t('traffic.errors.load')
+}
+
+/** 出口统计的错误：通用的窗口与参数原因沿用上面的映射，其余按出口语境提示。 */
+export function egressErrorMessage(error: unknown, t: Translate): string {
+  const value = (error ?? {}) as RequestError
+  if (value.reason === 'TRAFFIC_ROUTE_NOT_FOUND') return t('traffic.egress.errors.notFound')
+  if (value.reason) return subjectErrorMessage(error, t)
+  if (value.status === 403) return t('traffic.egress.errors.forbidden')
+  if (value.status === 404) {
+    return value.code === 'OPS_DISABLED' ? t('traffic.egress.errors.disabled') : t('traffic.egress.errors.unsupported')
+  }
+  if (value.status === 503) return t('traffic.egress.errors.unavailable')
+  return t('traffic.egress.errors.load')
 }

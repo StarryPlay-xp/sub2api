@@ -83,7 +83,14 @@
         <!-- 小时趋势 -->
         <section class="rounded-2xl border border-gray-100 p-4 dark:border-dark-700">
           <h4 class="mb-2 text-sm font-medium text-gray-700 dark:text-dark-100">{{ t('traffic.detail.trend') }}</h4>
-          <SubjectTrendChart :history="detail.data.value?.history ?? []" :window="detail.data.value?.window ?? null" />
+          <TrafficTrendChart
+            :samples="trendSamples"
+            :span="trendSpan"
+            :grain="HOUR_MS"
+            :in-label="t('traffic.detail.inbound')"
+            :out-label="t('traffic.detail.outbound')"
+            :peak-label="t('traffic.detail.peakLine')"
+          />
         </section>
 
         <!-- 四方向构成 -->
@@ -139,10 +146,11 @@ import type { TrafficSubjectIdentity } from '@/api/admin/trafficSubjects'
 import { busierPeak } from '@/utils/bandwidthSeries'
 import { formatByteCount, formatMbps, formatSampleTime } from '@/utils/trafficFormat'
 import { formatDateInput, formatDateTimeLabel } from '@/utils/wireguardTraffic'
+import { HOUR_MS } from '@/utils/wireguardTrafficChart'
 import { useBandwidthPalette } from '@/views/admin/bandwidth/useBandwidthPalette'
 import SubjectIdentity from './SubjectIdentity.vue'
 import SubjectRankingCard from './SubjectRankingCard.vue'
-import SubjectTrendChart from './SubjectTrendChart.vue'
+import TrafficTrendChart from './TrafficTrendChart.vue'
 import {
   averageRate,
   formatCount,
@@ -153,6 +161,7 @@ import {
   peakUsage,
   subjectTitle
 } from './subjectFormat'
+import { subjectTrendSamples } from './trendSamples'
 import type { PresetRange } from './usePresetRange'
 import { useSubjectDetail } from './useSubjectDetail'
 
@@ -186,6 +195,15 @@ watch(
 const detail = useSubjectDetail(current, toRef(props, 'range'))
 const summary = computed(() => detail.data.value?.summary ?? null)
 const detailWindow = computed(() => detail.data.value?.window ?? null)
+
+const trendSamples = computed(() => subjectTrendSamples(detail.data.value?.history ?? []))
+const trendSpan = computed(() => {
+  const value = detailWindow.value
+  if (!value) return null
+  const start = Date.parse(value.start)
+  const end = Date.parse(value.end)
+  return Number.isNaN(start) || Number.isNaN(end) || end <= start ? null : { start, end }
+})
 
 const dialogTitle = computed(() => (current.value ? subjectTitle(current.value) : ''))
 

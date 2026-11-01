@@ -3,23 +3,23 @@
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
       <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-dark-400">
         <span class="inline-flex items-center gap-1.5">
-          <span class="h-2 w-2 rounded-sm" :style="{ backgroundColor: palette.in }"></span>{{ t('traffic.detail.inbound') }}
+          <span class="h-2 w-2 rounded-sm" :style="{ backgroundColor: palette.in }"></span>{{ inLabel }}
         </span>
         <span class="inline-flex items-center gap-1.5">
-          <span class="h-2 w-2 rounded-sm" :style="{ backgroundColor: palette.out }"></span>{{ t('traffic.detail.outbound') }}
+          <span class="h-2 w-2 rounded-sm" :style="{ backgroundColor: palette.out }"></span>{{ outLabel }}
         </span>
         <span class="inline-flex items-center gap-1.5">
-          <span class="h-0.5 w-3 rounded-full" :style="{ backgroundColor: palette.limit }"></span>{{ t('traffic.detail.peakLine') }}
+          <span class="h-0.5 w-3 rounded-full" :style="{ backgroundColor: palette.limit }"></span>{{ peakLabel }}
         </span>
       </div>
       <span class="text-[11px] text-gray-400 dark:text-dark-500">{{ hint }}</span>
     </div>
-    <div ref="chartBox" class="relative mt-3 h-56" data-testid="subject-trend">
+    <div ref="chartBox" class="relative mt-3 h-56" :data-testid="testId">
       <Bar v-if="hasBins" :data="chartData" :options="chartOptions" role="img" :aria-label="t('traffic.detail.trend')" />
       <div
         v-else
         class="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-500 dark:border-dark-700 dark:text-dark-300"
-        data-testid="subject-trend-empty"
+        :data-testid="`${testId}-empty`"
       >
         {{ t('traffic.detail.noHistory') }}
       </div>
@@ -45,7 +45,6 @@ import {
   type TooltipItem
 } from 'chart.js'
 import { Bar } from 'vue-chartjs'
-import type { TrafficSubjectBucket, TrafficSubjectWindow } from '@/api/admin/trafficSubjects'
 import { buildPeakBins, type PeakSample } from '@/utils/bandwidthSeries'
 import { formatByteCount, formatMbps, formatSampleTime } from '@/utils/trafficFormat'
 import {
@@ -54,49 +53,38 @@ import {
   durationParts,
   formatBinRange,
   formatTimeTick,
-  HOUR_MS
+  type TimeSpan
 } from '@/utils/wireguardTrafficChart'
 import { useBandwidthPalette } from '@/views/admin/bandwidth/useBandwidthPalette'
+import type { TrendKey } from './trendSamples'
 
 ChartJS.register(BarController, LineController, LinearScale, BarElement, LineElement, PointElement, Tooltip)
 
-type Key = 'in' | 'out' | 'total'
-
-const props = defineProps<{
-  history: TrafficSubjectBucket[]
-  window: TrafficSubjectWindow | null
-}>()
+// 通用的“流量柱 + 峰值曲线”：入站、出站字节堆叠，合计峰值画在右轴。
+// 用户 / Key 与 WG 节点共用；调用方负责把各自的桶换算成 in/out/total。
+const props = withDefaults(
+  defineProps<{
+    samples: PeakSample<TrendKey>[]
+    span: TimeSpan | null
+    // 原始桶粒度（毫秒），用于判断柱内有几个桶有记录。
+    grain: number
+    inLabel: string
+    outLabel: string
+    peakLabel: string
+    // 柱宽说明的文案键，参数 size 为每柱时长。
+    hintKey?: string
+    testId?: string
+  }>(),
+  { hintKey: 'traffic.detail.trendHint', testId: 'subject-trend' }
+)
 
 const { t } = useI18n()
 const palette = useBandwidthPalette()
 const chartBox = ref<HTMLElement | null>(null)
 const { width } = useElementSize(chartBox)
 
-const toNumber = (value: string | undefined) => {
-  const number = Number(value)
-  return Number.isFinite(number) ? number : 0
-}
-
-const samples = computed<PeakSample<Key>[]>(() =>
-  props.history
-    .map((bucket) => {
-      const inbound = toNumber(bucket.bytes?.client_in) + toNumber(bucket.bytes?.upstream_in)
-      const outbound = toNumber(bucket.bytes?.client_out) + toNumber(bucket.bytes?.upstream_out)
-      return {
-        start: Date.parse(bucket.start),
-        peaks: bucket.peaks,
-        bytes: { in: inbound, out: outbound, total: inbound + outbound }
-      }
-    })
-    .filter((sample) => !Number.isNaN(sample.start))
-)
-
-const span = computed(() => {
-  if (!props.window) return null
-  const start = Date.parse(props.window.start)
-  const end = Date.parse(props.window.end)
-  return Number.isNaN(start) || Number.isNaN(end) || end <= start ? null : { start, end }
-})
+const samples = computed(() => props.samples)
+const span = computed(() => props.span)
 
 // 24 小时按小时；7 天约 6 小时一柱；更长按天。
 const maxBins = computed(() => {
@@ -109,8 +97,8 @@ const maxBins = computed(() => {
 
 const binned = computed(() =>
   span.value
-    ? buildPeakBins(samples.value, ['in', 'out', 'total'] as const, { grain: HOUR_MS, range: span.value, maxBins: maxBins.value })
-    : { size: HOUR_MS, bins: [] }
+    ? buildPeakBins(samples.value, ['in', 'out', 'total'] as const, { grain: props.grain, range: span.value, maxBins: maxBins.value })
+    : { size: props.grain, bins: [] }
 )
 
 const hasBins = computed(() => samples.value.length > 0 && binned.value.bins.length > 0)
@@ -118,7 +106,7 @@ const hasBins = computed(() => samples.value.length > 0 && binned.value.bins.len
 const hint = computed(() => {
   const { unit, count } = durationParts(binned.value.size)
   const keys = { minute: 'bandwidth.trend.minutes', hour: 'bandwidth.trend.hours', day: 'bandwidth.trend.days' } as const
-  return t('traffic.detail.trendHint', { size: t(keys[unit], { count }) })
+  return t(props.hintKey, { size: t(keys[unit], { count }) })
 })
 
 const byteUnit = computed(() => {
@@ -153,7 +141,7 @@ const chartData = computed<ChartData<'bar', { x: number; y: number }[]>>(() => {
   const bins = binned.value.bins
   const bars = (['in', 'out'] as const).map((key, index) => ({
     type: 'bar' as const,
-    label: key === 'in' ? t('traffic.detail.inbound') : t('traffic.detail.outbound'),
+    label: key === 'in' ? props.inLabel : props.outLabel,
     data: asData(bins.map((bin) => ({ x: (bin.start + bin.end) / 2, y: bin.recorded ? bin.bytes[key] / byteUnit.value.divisor : null }))),
     backgroundColor: key === 'in' ? palette.value.in : palette.value.out,
     hoverBackgroundColor: key === 'in' ? palette.value.inHover : palette.value.outHover,
@@ -170,7 +158,7 @@ const chartData = computed<ChartData<'bar', { x: number; y: number }[]>>(() => {
   }))
   const line = {
     type: 'line' as const,
-    label: t('traffic.detail.peakLine'),
+    label: props.peakLabel,
     data: asData(
       bins.map((bin) => ({
         x: (bin.start + bin.end) / 2,
@@ -226,7 +214,7 @@ const chartOptions = computed<ChartOptions<'bar'>>(() => ({
           if (context.datasetIndex === 2) {
             const peak = bin.peaks.total
             return peak
-              ? t('traffic.detail.tooltipPeak', { value: formatMbps(peak.bytes_per_second), time: formatSampleTime(peak.at) })
+              ? t('traffic.detail.tooltipPeak', { label: props.peakLabel, value: formatMbps(peak.bytes_per_second), time: formatSampleTime(peak.at) })
               : ''
           }
           const key = context.datasetIndex === 0 ? 'in' : 'out'
