@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -445,6 +446,7 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
+	trafficMeter          *traffic.Meter
 	accountRepo           AccountRepository
 	usageLogRepo          UsageLogRepository
 	usageBillingRepo      UsageBillingRepository
@@ -1284,3 +1286,6 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 	}
 }
+
+// SetTrafficMeter is called during dependency wiring, before serving requests.
+func (s *OpenAIGatewayService) SetTrafficMeter(m *traffic.Meter) { s.trafficMeter = m }

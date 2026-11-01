@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net/http"
 	"net/url"
@@ -58,7 +59,7 @@ func (b *BraveProvider) Search(ctx context.Context, req SearchRequest) (*SearchR
 	httpReq.Header.Set("X-Subscription-Token", b.apiKey)
 	httpReq.Header.Set("Accept", "application/json")
 
-	resp, err := b.httpClient.Do(httpReq)
+	resp, err := traffic.Do(b.httpClient, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("brave: request failed: %w", err)
 	}

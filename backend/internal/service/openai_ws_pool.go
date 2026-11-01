@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"math"
 	"net"
 	"net/http"
@@ -70,10 +71,11 @@ func (e *openAIWSDialError) Unwrap() error {
 }
 
 type openAIWSAcquireRequest struct {
-	Route   *egress.Route
-	Account *Account
-	WSURL   string
-	Headers http.Header
+	TrafficMeter *traffic.Meter
+	Route        *egress.Route
+	Account      *Account
+	WSURL        string
+	Headers      http.Header
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
@@ -1111,6 +1113,7 @@ type openAIWSAcquireQueueWait struct {
 }
 
 func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConnLease, error) {
+	req.TrafficMeter = traffic.FromContext(ctx)
 	if route := egress.FromContext(ctx); route != nil {
 		req.Route = route
 	}
@@ -2141,6 +2144,9 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 }
 
 func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConn, error) {
+	if req.TrafficMeter != nil {
+		ctx = traffic.WithMeter(ctx, req.TrafficMeter)
+	}
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
 	}

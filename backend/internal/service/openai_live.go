@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net/http"
 	"net/url"
@@ -526,7 +527,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	errCh := make(chan error, 2)
 	go func() {
 		for {
-			messageType, payload, readErr := downstream.Read(proxyCtx)
+			messageType, payload, readErr := traffic.ReadWS(proxyCtx, downstream, traffic.FromContext(ctx), traffic.ClientIn)
 			if readErr != nil {
 				errCh <- readErr
 				return
@@ -544,7 +545,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 				errCh <- liveSidebandReadError(readErr)
 				return
 			}
-			if writeErr := downstream.Write(proxyCtx, messageType, payload); writeErr != nil {
+			if writeErr := traffic.WriteWS(proxyCtx, downstream, traffic.FromContext(ctx), traffic.ClientOut, messageType, payload); writeErr != nil {
 				errCh <- writeErr
 				return
 			}
@@ -657,7 +658,7 @@ func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
 			s.finalizeLiveCall(record)
 			return
 		}
-		upstream, dialErr := s.dialLiveSideband(context.Background(), record)
+		upstream, dialErr := s.dialLiveSideband(traffic.WithMeter(context.Background(), s.trafficMeter), record)
 		if dialErr != nil {
 			if !s.waitForLiveObserverRetry(record) {
 				return

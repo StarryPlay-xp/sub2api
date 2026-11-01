@@ -2,6 +2,7 @@ package wgtunnel
 
 import (
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"time"
 )
 
@@ -115,6 +116,8 @@ func ResolveTrafficWindow(query TrafficQuery, now time.Time) (TrafficWindow, err
 }
 
 type TrafficReport struct {
+	PeakHistory       *traffic.PeakHistory `json:"peak_history"`
+	PeakWindowSeconds int                  `json:"peak_window_seconds"`
 	TrafficWindow
 	TX            string     `json:"tx_bytes"`
 	RX            string     `json:"rx_bytes"`

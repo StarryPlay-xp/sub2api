@@ -26,7 +26,9 @@ func TestMeterCountsBothDirectionsOnce(t *testing.T) {
 	}
 	m.Ack(c)
 	counters.TX.Add(50)
-	m.Sample(now.Add(2 * time.Second))
+	if _, err := m.Sample(now.Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	c3, _ := m.Checkpoint(1, "run", 1, false)
 	if c3.Buckets[0].TX != 150 {
 		t.Fatal("open bucket lost cumulative identity")
@@ -38,7 +40,9 @@ func TestMeterMarksResetAndMissingHistory(t *testing.T) {
 	now := time.Now()
 	m := NewMeter(&c, now)
 	c.TX.Add(10)
-	m.Sample(now.Add(time.Second))
+	if _, err := m.Sample(now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	c.TX.Store(0)
 	if _, e := m.Sample(now.Add(2 * time.Second)); e == nil {
 		t.Fatal("counter reset silently accepted")
@@ -46,5 +50,31 @@ func TestMeterMarksResetAndMissingHistory(t *testing.T) {
 	_, gap := m.Checkpoint(1, "run", 1, false)
 	if !gap {
 		t.Fatal("reset not marked")
+	}
+}
+
+func TestMeterAckPreservesIdleSamplesAddedDuringSave(t *testing.T) {
+	var counts Counters
+	start := time.Date(2026, 1, 1, 0, 0, 57, 0, time.UTC)
+	m := NewMeter(&counts, start)
+	if _, err := m.Sample(start.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := m.Checkpoint(1, "run", 1, false)
+	if _, err := m.Sample(start.Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Sample(start.Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	m.Ack(saved)
+	next, _ := m.Checkpoint(1, "run", 1, false)
+	if len(next.Buckets) != 2 {
+		t.Fatal("unsaved idle sample was discarded")
+	}
+	m.Ack(next)
+	final, _ := m.Checkpoint(1, "run", 1, false)
+	if len(final.Buckets) != 1 {
+		t.Fatal("persisted completed bucket was not retired")
 	}
 }

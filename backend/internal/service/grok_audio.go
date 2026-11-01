@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"net/http"
 	"net/url"
 	"strings"
@@ -228,7 +229,7 @@ func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin
 			if grokRealtimeEventHasAudio(msg) {
 				audioObserved.Store(true)
 			}
-			if writeErr := client.Write(ctx, coderws.MessageText, msg); writeErr != nil {
+			if writeErr := traffic.WriteWS(ctx, client, traffic.FromContext(ctx), traffic.ClientOut, coderws.MessageText, msg); writeErr != nil {
 				errCh <- writeErr
 				return
 			}
@@ -238,7 +239,7 @@ func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin
 	// Client → upstream (JSON events only)
 	go func() {
 		for {
-			kind, msg, readErr := client.Read(ctx)
+			kind, msg, readErr := traffic.ReadWS(ctx, client, traffic.FromContext(ctx), traffic.ClientIn)
 			if readErr != nil {
 				errCh <- readErr
 				return

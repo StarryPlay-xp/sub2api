@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 const openAIWSMessageReadLimitBytes int64 = 16 * 1024 * 1024
@@ -126,7 +126,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
 
-	wrapped := &coderOpenAIWSClientConn{}
+	wrapped := &coderOpenAIWSClientConn{trafficMeter: traffic.FromContext(ctx)}
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { wrapped.remote = info.Conn.RemoteAddr() }})
 	opts := &coderws.DialOptions{
 		HTTPHeader:      cloneHeader(headers),
@@ -153,6 +153,15 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		opts.HTTPClient = proxyClient
 	}
 
+	// Include consumed error response bodies when the WebSocket upgrade fails.
+	// The 101 socket itself is counted through the message helpers below.
+	client := opts.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	observedClient := *client
+	observedClient.Transport = traffic.Transport(client.Transport)
+	opts.HTTPClient = &observedClient
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)
 	if err != nil {
 		status := 0
@@ -302,6 +311,7 @@ func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransport
 }
 
 type coderOpenAIWSClientConn struct {
+	trafficMeter  *traffic.Meter
 	remote        net.Addr
 	conn          *coderws.Conn
 	upstreamPings atomic.Int64
@@ -323,7 +333,7 @@ func (c *coderOpenAIWSClientConn) WriteJSON(ctx context.Context, value any) erro
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return wsjson.Write(ctx, c.conn, value)
+	return traffic.WriteWSJSON(ctx, c.conn, c.trafficMeter, traffic.UpstreamOut, value)
 }
 
 func (c *coderOpenAIWSClientConn) ReadMessage(ctx context.Context) ([]byte, error) {
@@ -334,7 +344,7 @@ func (c *coderOpenAIWSClientConn) ReadMessage(ctx context.Context) ([]byte, erro
 		ctx = context.Background()
 	}
 
-	msgType, payload, err := c.conn.Read(ctx)
+	msgType, payload, err := traffic.ReadWS(ctx, c.conn, c.trafficMeter, traffic.UpstreamIn)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +363,7 @@ func (c *coderOpenAIWSClientConn) ReadFrame(ctx context.Context) (coderws.Messag
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	msgType, payload, err := c.conn.Read(ctx)
+	msgType, payload, err := traffic.ReadWS(ctx, c.conn, c.trafficMeter, traffic.UpstreamIn)
 	if err != nil {
 		return coderws.MessageText, nil, err
 	}
@@ -367,7 +377,7 @@ func (c *coderOpenAIWSClientConn) WriteFrame(ctx context.Context, msgType coderw
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return c.conn.Write(ctx, msgType, payload)
+	return traffic.WriteWS(ctx, c.conn, c.trafficMeter, traffic.UpstreamOut, msgType, payload)
 }
 
 func (c *coderOpenAIWSClientConn) Ping(ctx context.Context) error {

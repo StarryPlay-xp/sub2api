@@ -172,3 +172,50 @@ func TestClosedRuntimeCannotRestartBeforeValidation(t *testing.T) {
 		t.Fatal("manual resume failed", err)
 	}
 }
+
+type slowCheckpointStore struct {
+	*memoryNodeStore
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *slowCheckpointStore) SaveCheckpoint(ctx context.Context, c Checkpoint, gap bool) error {
+	s.once.Do(func() {
+		close(s.entered)
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+		}
+	})
+	return s.memoryNodeStore.SaveCheckpoint(ctx, c, gap)
+}
+func TestManagerSamplingContinuesDuringCheckpointWrite(t *testing.T) {
+	box, _ := NewSecretBox([]byte(strings.Repeat("k", 32)))
+	raw := strings.Replace(exampleConfig(), "vpn.example:51820", "127.0.0.1:51820", 1)
+	cipher, err := box.Seal(1, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &slowCheckpointStore{memoryNodeStore: &memoryNodeStore{node: Node{ID: 1, Version: 1, Active: true, Ciphertext: cipher}, checkpoints: map[string]Checkpoint{}, gaps: map[string]bool{}}, entered: make(chan struct{}), release: make(chan struct{})}
+	m := NewManager(store, box)
+	defer m.Close()
+	defer close(store.release)
+	if _, _, _, err = m.Acquire(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-store.entered:
+	case <-time.After(8 * time.Second):
+		t.Fatal("checkpoint not reached")
+	}
+	before := m.Rate(1).SampledAt
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if m.Rate(1).SampledAt.After(before) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("database checkpoint blocked bandwidth sampling")
+}

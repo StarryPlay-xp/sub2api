@@ -53,6 +53,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 
 	cleanup := provideCleanup(
 		nil, // WireGuard
+		nil, // Service traffic
 		nil, // entClient
 		nil, // redis
 		&service.OpsMetricsCollector{},

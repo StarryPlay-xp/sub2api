@@ -2,6 +2,7 @@ package wgtunnel
 
 import (
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"sync"
 	"time"
 )
@@ -23,9 +24,10 @@ type Checkpoint struct {
 }
 
 type Bucket struct {
-	Start time.Time `json:"start"`
-	TX    uint64    `json:"tx_bytes,string"`
-	RX    uint64    `json:"rx_bytes,string"`
+	Start       time.Time            `json:"start"`
+	TX          uint64               `json:"tx_bytes,string"`
+	RX          uint64               `json:"rx_bytes,string"`
+	PeakHistory *traffic.PeakHistory `json:"peak_history"`
 }
 
 type Rate struct {
@@ -47,7 +49,6 @@ type Meter struct {
 	mu      sync.Mutex
 	counts  *Counters
 	last    sample
-	samples []sample
 	buckets map[int64]Bucket
 	seq     int64
 	gap     bool
@@ -55,7 +56,7 @@ type Meter struct {
 
 func NewMeter(c *Counters, now time.Time) *Meter {
 	initial := sample{at: now}
-	return &Meter{counts: c, last: initial, samples: []sample{initial}, buckets: make(map[int64]Bucket)}
+	return &Meter{counts: c, last: initial, buckets: make(map[int64]Bucket)}
 }
 
 func (m *Meter) Sample(now time.Time) (Rate, error) {
@@ -76,6 +77,14 @@ func (m *Meter) Sample(now time.Time) (Rate, error) {
 	b.Start = minute
 	b.TX += c.TX - m.last.counts.TX
 	b.RX += c.RX - m.last.counts.RX
+	seconds := now.Sub(m.last.at).Seconds()
+	txRate, rxRate := float64(c.TX-m.last.counts.TX)/seconds, float64(c.RX-m.last.counts.RX)/seconds
+	peaks := traffic.PeaksFromRates(map[string]float64{"tx": txRate, "rx": rxRate, "total": txRate + rxRate}, now, seconds)
+	if b.PeakHistory == nil {
+		b.PeakHistory = &traffic.PeakHistory{Peaks: traffic.Peaks{}}
+	}
+	b.PeakHistory.Peaks.Merge(peaks)
+	b.PeakHistory.Quality.Observe(now, peaks != nil)
 	m.buckets[minute.Unix()] = b
 	for k := range m.buckets {
 		if k < minute.Add(-30*time.Minute).Unix() {
@@ -84,14 +93,12 @@ func (m *Meter) Sample(now time.Time) (Rate, error) {
 		}
 	}
 	m.last = sample{now, c}
-	m.samples = append(m.samples, m.last)
 	m.seq++
-	for len(m.samples) > 2 && now.Sub(m.samples[1].at) >= 5*time.Second {
-		m.samples = m.samples[1:]
+	state := "sampled"
+	if peaks == nil {
+		state = "invalid_interval"
 	}
-	first := m.samples[0]
-	seconds := now.Sub(first.at).Seconds()
-	return Rate{TX: float64(c.TX-first.counts.TX) / seconds, RX: float64(c.RX-first.counts.RX) / seconds, WindowSeconds: seconds, SampledAt: now, State: "sampled"}, nil
+	return Rate{TX: txRate, RX: rxRate, WindowSeconds: seconds, SampledAt: now, State: state}, nil
 }
 
 func (m *Meter) Checkpoint(node int64, runtime string, version int64, closed bool) (Checkpoint, bool) {
@@ -99,6 +106,7 @@ func (m *Meter) Checkpoint(node int64, runtime string, version int64, closed boo
 	defer m.mu.Unlock()
 	c := Checkpoint{NodeID: node, RuntimeID: runtime, Version: version, Seq: m.seq, At: m.last.at, TX: m.last.counts.TX, RX: m.last.counts.RX, Closed: closed}
 	for _, b := range m.buckets {
+		b.PeakHistory = b.PeakHistory.Clone()
 		c.Buckets = append(c.Buckets, b)
 	}
 	return c, m.gap
@@ -112,9 +120,16 @@ func (m *Meter) Ack(c Checkpoint) {
 	current := m.last.at.UTC().Truncate(time.Minute)
 	for _, b := range c.Buckets {
 		if b.Start.Before(current) {
-			if live, ok := m.buckets[b.Start.Unix()]; ok && live.TX == b.TX && live.RX == b.RX {
+			if live, ok := m.buckets[b.Start.Unix()]; ok && live.TX == b.TX && live.RX == b.RX && samePeakSamples(live.PeakHistory, b.PeakHistory) {
 				delete(m.buckets, b.Start.Unix())
 			}
 		}
 	}
+}
+
+func samePeakSamples(a, b *traffic.PeakHistory) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Quality.ValidSamples == b.Quality.ValidSamples && a.Quality.InvalidSamples == b.Quality.InvalidSamples
 }

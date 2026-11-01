@@ -37,7 +37,7 @@ func (s *WireGuardStore) SaveCheckpoint(ctx context.Context, c wgtunnel.Checkpoi
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, e = tx.ExecContext(ctx, `INSERT INTO wireguard_traffic_runtimes(runtime_id,proxy_id,config_version)
         VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, c.RuntimeID, c.NodeID, c.Version)
 	if e != nil {
@@ -82,8 +82,9 @@ func (s *WireGuardStore) SaveCheckpoint(ctx context.Context, c wgtunnel.Checkpoi
 			continue
 		}
 		var bt, br string
-		e = tx.QueryRowContext(ctx, `SELECT tx_bytes::text,rx_bytes::text FROM wireguard_traffic_buckets
-            WHERE runtime_id=$1 AND bucket_start=$2`, c.RuntimeID, b.Start).Scan(&bt, &br)
+		var oldPeak []byte
+		e = tx.QueryRowContext(ctx, `SELECT tx_bytes::text,rx_bytes::text,peak_data FROM wireguard_traffic_buckets
+            WHERE runtime_id=$1 AND bucket_start=$2`, c.RuntimeID, b.Start).Scan(&bt, &br, &oldPeak)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
@@ -110,6 +111,9 @@ func (s *WireGuardStore) SaveCheckpoint(ctx context.Context, c wgtunnel.Checkpoi
             VALUES($1,date_trunc('hour',$2::timestamptz,'UTC'),$3,$4) ON CONFLICT(proxy_id,bucket_start) DO UPDATE SET
             tx_bytes=wireguard_traffic_hourly.tx_bytes+EXCLUDED.tx_bytes,rx_bytes=wireguard_traffic_hourly.rx_bytes+EXCLUDED.rx_bytes`, c.NodeID, b.Start, strconv.FormatUint(b.TX-ot, 10), strconv.FormatUint(b.RX-or, 10))
 		if e != nil {
+			return e
+		}
+		if e = saveWireGuardPeaks(ctx, tx, c, b, oldPeak); e != nil {
 			return e
 		}
 	}

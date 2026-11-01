@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"net/http"
 	"net/url"
 	"strings"
@@ -651,7 +652,7 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 			payload = c.restoreToolNames(payload)
 		}
 	}
-	return c.conn.Write(ctx, msgType, payload)
+	return traffic.WriteWS(ctx, c.conn, traffic.FromContext(c.controlCtx), traffic.ClientOut, msgType, payload)
 }
 
 func (c *openAIWSClientFrameConn) Close() error {
@@ -793,7 +794,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
 		if eventBytes != nil {
 			writeCtx, cancelWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
-			_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+			_ = traffic.WriteWS(writeCtx, clientConn, traffic.FromContext(ctx), traffic.ClientOut, coderws.MessageText, eventBytes)
 			cancelWrite()
 		}
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
@@ -1138,7 +1139,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				return
 			}
 			writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
-			_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+			_ = traffic.WriteWS(writeCtx, clientConn, traffic.FromContext(ctx), traffic.ClientOut, coderws.MessageText, eventBytes)
 			cancel()
 		},
 	}

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"time"
 
 	coderws "github.com/coder/websocket"
@@ -55,7 +56,7 @@ func readOpenAIWSClientMessageWithTimeoutStart(
 
 	readDone := make(chan openAIWSClientReadResult, 1)
 	go func() {
-		messageType, payload, err := conn.Read(context.Background())
+		messageType, payload, err := traffic.ReadWS(context.Background(), conn, traffic.FromContext(controlCtx), traffic.ClientIn)
 		readDone <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
 	}()
 

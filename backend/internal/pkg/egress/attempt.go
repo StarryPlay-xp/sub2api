@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net"
 	"net/http"
@@ -86,6 +87,7 @@ func (r *Recorder) Close() {
 	r.cancel()
 }
 func (r *Route) observeRoundTrip(request *http.Request, next http.RoundTripper) (*http.Response, error) {
+	next = traffic.Transport(next)
 	observer, recorder := r.router.observer, r.router.recorder
 	if observer == nil || recorder == nil {
 		return next.RoundTrip(request)

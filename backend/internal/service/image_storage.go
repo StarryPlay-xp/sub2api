@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"mime"
 	"net"
@@ -326,7 +327,7 @@ func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]by
 			return nil, "", err
 		}
 	}
-	resp, err := client.Do(req)
+	resp, err := traffic.Do(client, req)
 	if err != nil {
 		return nil, "", fmt.Errorf("download image: %w", err)
 	}

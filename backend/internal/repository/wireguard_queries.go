@@ -4,20 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
 	"math/big"
 	"strconv"
 )
 
 func (s *WireGuardStore) TrafficReport(ctx context.Context, id int64, window wgtunnel.TrafficWindow) (wgtunnel.TrafficReport, error) {
-	result := wgtunnel.TrafficReport{TrafficWindow: window, TX: "0", RX: "0", Total: "0", MetricBasis: wgtunnel.MetricBasis, History: []wgtunnel.Bucket{}}
-	query := `SELECT bucket_start,tx_bytes::text,rx_bytes::text FROM wireguard_traffic_hourly
+	result := wgtunnel.TrafficReport{TrafficWindow: window, TX: "0", RX: "0", Total: "0", MetricBasis: wgtunnel.MetricBasis, PeakWindowSeconds: 1, History: []wgtunnel.Bucket{}}
+	query := `SELECT bucket_start,tx_bytes::text,rx_bytes::text,peak_data FROM wireguard_traffic_hourly
 		WHERE proxy_id=$1 AND bucket_start >= $2 AND bucket_start < $3 ORDER BY bucket_start`
 	if window.Interval == "minute" {
-		query = `SELECT b.bucket_start,SUM(b.tx_bytes)::text,SUM(b.rx_bytes)::text
+		query = `SELECT b.bucket_start,b.tx_bytes::text,b.rx_bytes::text,b.peak_data
 			FROM wireguard_traffic_buckets b JOIN wireguard_traffic_runtimes r ON r.runtime_id=b.runtime_id
 			WHERE r.proxy_id=$1 AND b.bucket_start >= $2 AND b.bucket_start < $3
-			GROUP BY b.bucket_start ORDER BY b.bucket_start`
+			ORDER BY b.bucket_start`
 	} else if window.Interval != "hour" {
 		return result, errors.New("invalid traffic interval")
 	}
@@ -25,14 +26,37 @@ func (s *WireGuardStore) TrafficReport(ctx context.Context, id int64, window wgt
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tx, rx := new(big.Int), new(big.Int)
 	for rows.Next() {
 		var bucket wgtunnel.Bucket
-		if err = rows.Scan(&bucket.Start, &bucket.TX, &bucket.RX); err != nil {
+		var raw []byte
+		if err = rows.Scan(&bucket.Start, &bucket.TX, &bucket.RX, &raw); err != nil {
 			return result, err
 		}
-		result.History = append(result.History, bucket)
+		if len(raw) > 0 {
+			bucket.PeakHistory = &traffic.PeakHistory{}
+			if err = json.Unmarshal(raw, bucket.PeakHistory); err != nil {
+				return result, err
+			}
+			if result.PeakHistory == nil {
+				result.PeakHistory = &traffic.PeakHistory{}
+			}
+			result.PeakHistory.Merge(bucket.PeakHistory)
+		}
+		if n := len(result.History); n > 0 && result.History[n-1].Start.Equal(bucket.Start) {
+			prior := &result.History[n-1]
+			prior.TX += bucket.TX
+			prior.RX += bucket.RX
+			if bucket.PeakHistory != nil {
+				if prior.PeakHistory == nil {
+					prior.PeakHistory = &traffic.PeakHistory{}
+				}
+				prior.PeakHistory.Merge(bucket.PeakHistory)
+			}
+		} else {
+			result.History = append(result.History, bucket)
+		}
 		tx.Add(tx, new(big.Int).SetUint64(bucket.TX))
 		rx.Add(rx, new(big.Int).SetUint64(bucket.RX))
 	}
@@ -60,7 +84,7 @@ func (s *WireGuardStore) TrafficHistory(ctx context.Context, id int64, interval 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []wgtunnel.Bucket{}
 	for rows.Next() {
 		var b wgtunnel.Bucket
@@ -76,7 +100,7 @@ func (s *WireGuardStore) NodeObservations(ctx context.Context, id int64) ([]wgtu
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []wgtunnel.Evidence{}
 	for rows.Next() {
 		var data []byte

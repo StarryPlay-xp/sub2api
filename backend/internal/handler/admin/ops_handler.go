@@ -14,7 +14,8 @@ import (
 )
 
 type OpsHandler struct {
-	opsService *service.OpsService
+	opsService     *service.OpsService
+	serviceTraffic *service.ServiceTrafficService
 }
 
 // GetErrorLogByID returns ops error log detail.

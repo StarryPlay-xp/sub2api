@@ -150,7 +150,7 @@ func (m *Manager) retireLocked(id int64) {
 		return
 	}
 	n.runtime.Close()
-	n.meter.Sample(time.Now())
+	_, _ = n.meter.Sample(time.Now())
 	c, gap := n.meter.Checkpoint(id, n.id, n.version, true)
 	m.retired[n.id] = retiredRuntime{c, gap}
 	delete(m.nodes, id)
@@ -166,24 +166,40 @@ func (m *Manager) Rate(id int64) Rate {
 func (m *Manager) Close() { m.cancel(); <-m.done }
 func (m *Manager) loop() {
 	defer close(m.done)
+	// Store latency must not stretch a normal one-second sample into a multi-
+	// second average. Validation and persistence run on their own bounded loop.
+	maintained := make(chan struct{})
+	go func() {
+		defer close(maintained)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		ticks := 0
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+				m.validateRuntimes()
+				ticks++
+				if ticks%5 == 0 {
+					m.flush()
+				}
+			}
+		}
+	}()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	ticks := 0
 	for {
 		select {
 		case <-ticker.C:
-			m.validateRuntimes()
-			now := time.Now()
 			m.mu.Lock()
+			now := time.Now()
 			for _, n := range m.nodes {
 				n.rate, _ = n.meter.Sample(now)
 			}
 			m.mu.Unlock()
-			ticks++
-			if ticks%5 == 0 {
-				m.flush()
-			}
 		case <-m.ctx.Done():
+			<-maintained
 			m.mu.Lock()
 			for id := range m.nodes {
 				m.retireLocked(id)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net/http"
 )
@@ -56,7 +57,7 @@ func (t *TavilyProvider) Search(ctx context.Context, req SearchRequest) (*Search
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := t.httpClient.Do(httpReq)
+	resp, err := traffic.Do(t.httpClient, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("tavily: request failed: %w", err)
 	}

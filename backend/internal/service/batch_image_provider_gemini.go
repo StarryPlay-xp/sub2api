@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -591,7 +592,7 @@ func (c *GeminiBatchHTTPClient) DownloadFile(ctx context.Context, apiKey string,
 		return nil, "", err
 	}
 	req.Header.Set("x-goog-api-key", apiKey)
-	resp, err := c.client.Do(req)
+	resp, err := traffic.Do(c.client, req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -627,7 +628,7 @@ func (c *GeminiBatchHTTPClient) doBatchJob(req *http.Request) (*GeminiBatchJob, 
 }
 
 func (c *GeminiBatchHTTPClient) doNoBody(req *http.Request) error {
-	resp, err := c.client.Do(req)
+	resp, err := traffic.Do(c.client, req)
 	if err != nil {
 		return err
 	}
@@ -639,7 +640,7 @@ func (c *GeminiBatchHTTPClient) doNoBody(req *http.Request) error {
 }
 
 func (c *GeminiBatchHTTPClient) doJSON(req *http.Request, out any) error {
-	resp, err := c.client.Do(req)
+	resp, err := traffic.Do(c.client, req)
 	if err != nil {
 		return err
 	}

@@ -83,6 +83,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 
 func provideCleanup(
 	wireguard *service.WireGuardService,
+	serviceTraffic *service.ServiceTrafficService,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -447,6 +448,7 @@ func provideCleanup(
 		}
 
 		runParallel(parallelSteps)
+		serviceTraffic.Close() // Flush while the database is still open.
 		runSequential(infraSteps)
 
 		// Check if context timed out

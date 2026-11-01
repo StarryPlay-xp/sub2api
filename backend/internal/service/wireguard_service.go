@@ -69,7 +69,7 @@ func (s *WireGuardService) Close() {
 }
 func (s *WireGuardService) Create(ctx context.Context, input wgtunnel.NodeInput) (wgtunnel.NodeView, error) {
 	if s.Box == nil {
-		return wgtunnel.NodeView{}, errors.New("Configure WIREGUARD_KEY_FILE before creating WireGuard nodes")
+		return wgtunnel.NodeView{}, errors.New("configure WIREGUARD_KEY_FILE before creating WireGuard nodes")
 	}
 	id, err := s.Store.CreateNode(ctx, input, s.Box)
 	if err != nil {
@@ -111,7 +111,7 @@ func (s *WireGuardService) Traffic(ctx context.Context, id int64, window wgtunne
 	result, err := s.Store.TrafficReport(ctx, id, window)
 	// An incomplete lifetime is conservatively reflected in every interval;
 	// missing samples cannot be reconstructed or silently treated as zero.
-	result.Incomplete = node.Incomplete
+	result.Incomplete = node.Incomplete || (result.PeakHistory != nil && result.PeakHistory.Quality.InvalidSamples > 0)
 	result.SavedAt = node.SavedAt
 	return result, err
 }

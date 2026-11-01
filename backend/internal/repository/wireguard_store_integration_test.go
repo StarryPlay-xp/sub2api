@@ -69,6 +69,13 @@ func wireguardTestDBVersion(t *testing.T, upgraded bool) *sql.DB {
 	if _, e = isolated.Exec(`INSERT INTO proxies(id,name,protocol) VALUES(1,'test','wireguard'); INSERT INTO wireguard_nodes(proxy_id,config_ciphertext,public_summary) VALUES(1,'test-only','{}'); SELECT setval('proxies_id_seq',1);`); e != nil {
 		t.Fatal(e)
 	}
+	peakMigration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "253_service_traffic_peaks.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = isolated.Exec(string(peakMigration)); err != nil {
+		t.Fatal(err)
+	}
 	if upgraded {
 		applyWireGuardLifecycleMigration(t, isolated)
 	}

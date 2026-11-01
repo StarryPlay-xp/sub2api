@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 type BatchImageWorkerRuntime struct {
+	meter           *traffic.Meter
 	worker          *BatchImageWorker
 	billingRecovery *BatchImageBillingRecoveryService
 	cfg             *config.Config
@@ -31,6 +33,9 @@ func ProvideBatchImageWorkerRuntime(
 	authCache APIKeyAuthCacheInvalidator,
 	cfg *config.Config,
 ) *BatchImageWorkerRuntime {
+	return provideBatchImageWorkerRuntime(repo, accountRepo, queue, billingRepo, usageLogRepo, pricing, authCache, cfg, nil)
+}
+func provideBatchImageWorkerRuntime(repo BatchImageRepository, accountRepo AccountRepository, queue BatchImageQueue, billingRepo UsageBillingRepository, usageLogRepo UsageLogRepository, pricing *BatchImageModelPricingResolver, authCache APIKeyAuthCacheInvalidator, cfg *config.Config, meter *traffic.Meter) *BatchImageWorkerRuntime {
 	processor := &BatchImagePipelineProcessor{
 		ProviderProcessor: &BatchImageProviderProcessor{
 			Repo:             repo,
@@ -57,6 +62,7 @@ func ProvideBatchImageWorkerRuntime(
 		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
 		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
 	}
+	runtime.meter = meter
 	runtime.Start()
 	return runtime
 }
@@ -71,7 +77,7 @@ func (r *BatchImageWorkerRuntime) Start() {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(traffic.WithMeter(context.Background(), r.meter))
 	done := make(chan struct{})
 	r.cancel = cancel
 	r.done = done
@@ -140,4 +146,8 @@ func (r *BatchImageWorkerRuntime) Running() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.cancel != nil
+}
+
+func ProvideMeteredBatchImageWorkerRuntime(repo BatchImageRepository, accountRepo AccountRepository, queue BatchImageQueue, billingRepo UsageBillingRepository, usageLogRepo UsageLogRepository, pricing *BatchImageModelPricingResolver, authCache APIKeyAuthCacheInvalidator, cfg *config.Config, monitor *ServiceTrafficService) *BatchImageWorkerRuntime {
+	return provideBatchImageWorkerRuntime(repo, accountRepo, queue, billingRepo, usageLogRepo, pricing, authCache, cfg, monitor.Collector.Meter)
 }

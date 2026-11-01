@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net/http"
 	"net/url"
@@ -871,7 +872,7 @@ func (s *VertexGCSObjectStore) OpenObject(ctx context.Context, accessToken strin
 		return nil, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := s.client.Do(req)
+	resp, err := traffic.Do(s.client, req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -951,7 +952,7 @@ func doVertexJSON[T any](client *http.Client, req *http.Request) (*T, error) {
 }
 
 func doVertexDecodeJSON(client *http.Client, req *http.Request, out any) error {
-	resp, err := client.Do(req)
+	resp, err := traffic.Do(client, req)
 	if err != nil {
 		return err
 	}
@@ -963,7 +964,7 @@ func doVertexDecodeJSON(client *http.Client, req *http.Request, out any) error {
 }
 
 func doVertexNoBody(client *http.Client, req *http.Request) error {
-	resp, err := client.Do(req)
+	resp, err := traffic.Do(client, req)
 	if err != nil {
 		return err
 	}
