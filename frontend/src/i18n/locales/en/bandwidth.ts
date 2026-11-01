@@ -115,6 +115,34 @@ export default {
     usage: 'Of limit',
     tableEmpty: 'No valid peak samples to rank.'
   },
+  traffic: {
+    title: 'Traffic statistics',
+    subtitle: 'Application payload totals for the selected range. Daily average and average bandwidth are based on the observed duration.',
+    total: 'Total traffic',
+    inOut: 'Inbound {inbound} · Outbound {outbound}',
+    daily: 'Daily average',
+    average: 'Average bandwidth',
+    averageHint: 'Total ÷ observed duration, for comparison with the bandwidth limit',
+    observed: 'Based on {duration} of observations',
+    observedDays: '{days}d {hours}h',
+    observedDaysOnly: '{days}d',
+    observedHours: '{hours}h',
+    observedMinutes: '{minutes} min',
+    breakdown: 'Traffic composition',
+    breakdownHint: 'The same content is counted once on each hop',
+    clientIn: 'Client requests',
+    clientOut: 'Client responses',
+    upstreamOut: 'Upstream requests',
+    upstreamIn: 'Upstream responses',
+    trend: 'Traffic trend',
+    trendHint: 'Inbound + outbound stacked · {size} per bar',
+    inbound: 'Inbound traffic',
+    outbound: 'Outbound traffic',
+    tooltipTotal: 'Total {total}',
+    noRecords: 'No saved traffic records for the selected period',
+    noRecordsHint: 'No records does not confirm zero traffic.',
+    unavailable: 'No data'
+  },
   relay: {
     title: 'Traffic path',
     subtitle: 'This site is a relay: client requests go to the upstream, and upstream replies go back to the client.',
@@ -128,8 +156,6 @@ export default {
     upstreamIn: 'Responses',
     peak: 'Peak {value}',
     peakUnknown: 'Peak unknown',
-    both: 'Both directions',
-    bothHint: 'Not for comparing with limits',
     note: 'Content that passes through both hops is counted once per hop. Upstream traffic over WireGuard is included in the “this site ⇄ model upstream” hop and uses both this host’s and the node’s bandwidth, so do not add host traffic to node traffic.'
   },
   nodes: {

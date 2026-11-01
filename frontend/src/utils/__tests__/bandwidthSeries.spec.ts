@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ServiceTrafficBucket } from '@/api/admin/ops'
+import type { ServiceTrafficBucket, ServiceTrafficReport } from '@/api/admin/ops'
 import type { TrafficBucket } from '@/api/admin/wireguard'
 import {
   buildPeakBins,
@@ -8,8 +8,11 @@ import {
   hostSamples,
   maxPeak,
   nodeSamples,
+  observedTrafficSeconds,
   toMbps,
-  topPeakWindows
+  topPeakWindows,
+  trafficDirectionShares,
+  trafficSummary
 } from '../bandwidthSeries'
 
 const MINUTE = 60_000
@@ -141,5 +144,99 @@ describe('headroomLevel', () => {
     expect(headroomLevel(0.7)).toBe('warning')
     expect(headroomLevel(0.9)).toBe('critical')
     expect(headroomLevel(1.4)).toBe('critical')
+  })
+})
+
+describe('traffic summary', () => {
+  function serviceReport(overrides: Partial<ServiceTrafficReport> = {}): ServiceTrafficReport {
+    return {
+      range: '24h',
+      interval: 'hour',
+      start: '2026-10-31T00:00:00Z',
+      end: '2026-11-01T00:00:00Z',
+      requested_start: '2026-10-31T00:00:00Z',
+      requested_end: '2026-11-01T00:00:00Z',
+      retained_from: '2026-08-01T00:00:00Z',
+      as_of: '2026-11-01T00:00:00Z',
+      end_clamped: false,
+      metric_basis: 'service_payload_v1',
+      scope: 'single_instance_history',
+      peak_window_seconds: 1,
+      bytes: { client_in: '0', client_out: '0', upstream_out: '0', upstream_in: '0' },
+      in_bytes: '0',
+      out_bytes: '0',
+      total_bytes: '0',
+      peaks: null,
+      quality: {
+        first_sample_at: '2026-10-31T00:00:00Z',
+        last_sample_at: '2026-11-01T00:00:00Z',
+        valid_samples: 86_400,
+        invalid_samples: 0
+      },
+      history: [],
+      has_records: true,
+      incomplete: false,
+      concurrent_runtimes: false,
+      saved_at: null,
+      ...overrides
+    }
+  }
+
+  it('uses the observed window for daily average and average bandwidth', () => {
+    const report = serviceReport({
+      total_bytes: '8640000',
+      in_bytes: '4320000',
+      out_bytes: '4320000',
+      quality: {
+        first_sample_at: '2026-10-31T12:00:00Z',
+        last_sample_at: '2026-11-01T00:00:00Z',
+        valid_samples: 43_200,
+        invalid_samples: 0
+      }
+    })
+    const summary = trafficSummary(report)
+    expect(summary.observedSeconds).toBe(12 * 3600)
+    expect(summary.total).toBe(8_640_000n)
+    expect(summary.dailyBytes).toBe(17_280_000n)
+    expect(summary.averageBytesPerSecond).toBe(200)
+  })
+
+  it('does not present a range-length average when observations are missing', () => {
+    const report = serviceReport({
+      total_bytes: '1000',
+      quality: { first_sample_at: null, last_sample_at: null, valid_samples: 0, invalid_samples: 0 }
+    })
+    expect(observedTrafficSeconds(report)).toBeNull()
+    const summary = trafficSummary(report)
+    expect(summary.total).toBe(1000n)
+    expect(summary.dailyBytes).toBeNull()
+    expect(summary.averageBytesPerSecond).toBeNull()
+  })
+
+  it('keeps everything unknown without records', () => {
+    const summary = trafficSummary(serviceReport({ has_records: false }))
+    expect(summary.total).toBeNull()
+    expect(summary.dailyBytes).toBeNull()
+    expect(summary.averageBytesPerSecond).toBeNull()
+  })
+
+  it('computes each direction share of total traffic', () => {
+    const shares = trafficDirectionShares(
+      serviceReport({
+        bytes: { client_in: '250', client_out: '250', upstream_out: '250', upstream_in: '250' },
+        total_bytes: '1000'
+      })
+    )
+    expect(shares.map((share) => share.key)).toEqual([
+      'client_in',
+      'client_out',
+      'upstream_out',
+      'upstream_in'
+    ])
+    expect(shares.map((share) => share.bytes)).toEqual([250n, 250n, 250n, 250n])
+    expect(shares.map((share) => share.percent)).toEqual([25, 25, 25, 25])
+
+    const empty = trafficDirectionShares(serviceReport({ has_records: false }))
+    expect(empty.every((share) => share.bytes === null && share.percent === null)).toBe(true)
   })
 })

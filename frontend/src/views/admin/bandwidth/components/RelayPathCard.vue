@@ -3,21 +3,9 @@
     class="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700"
     data-testid="relay-path"
   >
-    <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div>
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('bandwidth.relay.title') }}</h3>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('bandwidth.relay.subtitle') }}</p>
-      </div>
-      <dl class="grid grid-cols-3 gap-x-4 gap-y-1 text-left sm:gap-x-6 lg:text-right">
-        <div v-for="total in totals" :key="total.key" :data-testid="`relay-total-${total.key}`">
-          <dt class="flex items-center gap-1.5 text-xs text-gray-500 lg:justify-end dark:text-dark-400">
-            <span v-if="total.color" class="h-2 w-2 rounded-full" :style="{ backgroundColor: total.color }"></span>
-            {{ total.label }}
-          </dt>
-          <dd class="mt-0.5 whitespace-nowrap text-base font-semibold text-gray-900 dark:text-white sm:text-lg">{{ total.value }}</dd>
-          <dd v-if="total.hint" class="text-[11px] text-gray-400 dark:text-dark-500">{{ total.hint }}</dd>
-        </div>
-      </dl>
+    <header>
+      <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('bandwidth.relay.title') }}</h3>
+      <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('bandwidth.relay.subtitle') }}</p>
     </header>
 
     <!-- 宽屏：横向链路 -->
@@ -176,20 +164,4 @@ const layout = computed<LayoutItem[]>(() => [
     note: t('bandwidth.relay.upstreamNote')
   }
 ])
-
-const totals = computed(() => {
-  const report = props.report
-  const value = (bytes: string | undefined) => (report?.has_records ? formatByteCount(bytes) : '—')
-  return [
-    { key: 'in', label: t('bandwidth.direction.in'), value: value(report?.in_bytes), color: palette.value.in, hint: '' },
-    { key: 'out', label: t('bandwidth.direction.out'), value: value(report?.out_bytes), color: palette.value.out, hint: '' },
-    {
-      key: 'both',
-      label: t('bandwidth.relay.both'),
-      value: value(report?.total_bytes),
-      color: '',
-      hint: t('bandwidth.relay.bothHint')
-    }
-  ]
-})
 </script>

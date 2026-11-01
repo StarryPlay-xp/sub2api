@@ -105,6 +105,7 @@ describe('BandwidthView', () => {
       [12, { range: '24h' }]
     ])
     expect(wrapper.get('[data-testid="host-peak"]').text()).toContain('16.78')
+    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('1.5 GiB')
     expect(wrapper.get('[data-testid="wg-node-11"]').text()).toContain('33.55')
     expect(wrapper.get('[data-testid="wg-node-12"]').text()).toContain('bandwidth.nodes.legacy')
     expect(wrapper.get('[data-testid="range-text"]').text()).toContain('bandwidth.perMinute')

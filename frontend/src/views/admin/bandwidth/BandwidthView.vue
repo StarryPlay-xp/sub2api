@@ -75,6 +75,8 @@
         @update:limit="limits.setHostLimit"
       />
 
+      <TrafficOverview :report="report" :loading="feed.loading.value" />
+
       <PeakTrendChart :report="report" :limit="limits.hostLimit.value" :loading="feed.loading.value" />
 
       <RelayPathCard :report="report" />
@@ -194,6 +196,7 @@ import { formatSampleTime, isMissingTime } from '@/utils/trafficFormat'
 import HostBandwidthHero from './components/HostBandwidthHero.vue'
 import PeakTrendChart from './components/PeakTrendChart.vue'
 import RelayPathCard from './components/RelayPathCard.vue'
+import TrafficOverview from './components/TrafficOverview.vue'
 import WireGuardNodeCard from './components/WireGuardNodeCard.vue'
 import { useBandwidthLimits } from './useBandwidthLimits'
 import { useServiceTrafficFeed, type PresetRange } from './useServiceTrafficFeed'

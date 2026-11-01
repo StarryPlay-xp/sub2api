@@ -115,6 +115,34 @@ export default {
     usage: '占上限',
     tableEmpty: '没有有效的峰值样本可供排行。'
   },
+  traffic: {
+    title: '流量统计',
+    subtitle: '所选期间应用载荷累计；日均与平均带宽按实际观察时长折算。',
+    total: '累计流量',
+    inOut: '入站 {inbound} · 出站 {outbound}',
+    daily: '日均流量',
+    average: '平均带宽占用',
+    averageHint: '总量 ÷ 观察时长，用来和带宽上限对照',
+    observed: '按实际观察时长 {duration}折算',
+    observedDays: '{days} 天 {hours} 小时',
+    observedDaysOnly: '{days} 天',
+    observedHours: '{hours} 小时',
+    observedMinutes: '{minutes} 分钟',
+    breakdown: '流量构成',
+    breakdownHint: '同一内容经过两段路径时会各记一次',
+    clientIn: '客户端请求',
+    clientOut: '客户端响应',
+    upstreamOut: '上游请求',
+    upstreamIn: '上游响应',
+    trend: '流量趋势',
+    trendHint: '每柱 {size} · 入站 + 出站堆叠',
+    inbound: '入站流量',
+    outbound: '出站流量',
+    tooltipTotal: '合计 {total}',
+    noRecords: '所选期间没有已保存的流量记录',
+    noRecordsHint: '没有记录不代表已确认流量为零。',
+    unavailable: '暂无数据'
+  },
   relay: {
     title: '流量路径',
     subtitle: '本站是中转：客户端的请求转给上游，上游的回复再转回客户端。',
@@ -128,8 +156,6 @@ export default {
     upstreamIn: '响应',
     peak: '峰值 {value}',
     peakUnknown: '峰值未知',
-    both: '双向合计',
-    bothHint: '不用于对比带宽上限',
     note: '同一内容经过两段时会各记一次。走 WireGuard 的上游流量也在“本站 ⇄ 模型上游”这一段里，它同时占用本机和对应节点的带宽，因此本页的本机流量不能再与节点流量相加。'
   },
   nodes: {

@@ -1,7 +1,12 @@
 // 带宽监控的数据整理：把分钟/小时桶里的 1 秒峰值合并成图表柱，挑出单方向最忙的时段。
 // 峰值只能取最大值合并，不能相加；没有记录的桶不补 0。
-import type { ServiceTrafficBucket } from '@/api/admin/ops'
+import type {
+  ServiceTrafficBucket,
+  ServiceTrafficDirection,
+  ServiceTrafficReport
+} from '@/api/admin/ops'
 import type { TrafficBucket, TrafficPeak } from '@/api/admin/wireguard'
+import { isMissingTime } from './trafficFormat'
 import { alignBinStart, pickBinSize, type TimeSpan } from './wireguardTrafficChart'
 
 export type HostDirection = 'in' | 'out'
@@ -127,6 +132,81 @@ export function hostSamples(history: ServiceTrafficBucket[]): PeakSample<HostDir
       }
     }))
     .filter((sample) => !Number.isNaN(sample.start))
+}
+
+function parseBytes(value: string | null | undefined): bigint | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null
+  return BigInt(value)
+}
+
+/** 实际观察时长：取首末样本与所选范围的交集；无法确认时返回 null，不拿范围时长冒充。 */
+export function observedTrafficSeconds(report: ServiceTrafficReport): number | null {
+  const quality = report.quality
+  if (!quality || isMissingTime(quality.first_sample_at) || isMissingTime(quality.last_sample_at)) {
+    return null
+  }
+  const start = Date.parse(report.start)
+  const end = Date.parse(report.end)
+  const first = Date.parse(quality.first_sample_at ?? '')
+  const last = Date.parse(quality.last_sample_at ?? '')
+  if (![start, end, first, last].every(Number.isFinite)) return null
+  const seconds = (Math.min(last, end) - Math.max(first, start)) / 1000
+  return seconds > 0 ? seconds : null
+}
+
+export interface TrafficSummary {
+  total: bigint | null
+  inbound: bigint | null
+  outbound: bigint | null
+  observedSeconds: number | null
+  dailyBytes: bigint | null
+  averageBytesPerSecond: number | null
+}
+
+/** 所选期间的累计流量、日均与平均带宽；日均和均速只按实际观察时长折算。 */
+export function trafficSummary(report: ServiceTrafficReport | null): TrafficSummary {
+  if (!report?.has_records) {
+    return {
+      total: null,
+      inbound: null,
+      outbound: null,
+      observedSeconds: null,
+      dailyBytes: null,
+      averageBytesPerSecond: null
+    }
+  }
+  const total = parseBytes(report.total_bytes)
+  const inbound = parseBytes(report.in_bytes)
+  const outbound = parseBytes(report.out_bytes)
+  const observedSeconds = observedTrafficSeconds(report)
+  const averageBytesPerSecond =
+    total !== null && observedSeconds !== null ? Number(total) / observedSeconds : null
+  const dailyBytes =
+    total !== null && observedSeconds !== null
+      ? (total * 86_400n) / BigInt(Math.max(1, Math.round(observedSeconds)))
+      : null
+  return { total, inbound, outbound, observedSeconds, dailyBytes, averageBytesPerSecond }
+}
+
+export interface TrafficDirectionShare {
+  key: ServiceTrafficDirection
+  bytes: bigint | null
+  percent: number | null
+}
+
+const DIRECTION_KEYS = ['client_in', 'client_out', 'upstream_out', 'upstream_in'] as const
+
+/** 四方向流量及占双向总量的百分比，按 0.1% 向下取整，四段相加不会超过 100%。 */
+export function trafficDirectionShares(report: ServiceTrafficReport | null): TrafficDirectionShare[] {
+  const total = report?.has_records ? parseBytes(report.total_bytes) : null
+  return DIRECTION_KEYS.map((key) => {
+    const bytes = report?.has_records ? parseBytes(report.bytes?.[key]) : null
+    const percent =
+      bytes !== null && total !== null && total > 0n
+        ? Number((bytes * 1000n) / total) / 10
+        : null
+    return { key, bytes, percent }
+  })
 }
 
 /** WG 桶：升级前的历史 peak_history 为 null，保留为未知。 */
