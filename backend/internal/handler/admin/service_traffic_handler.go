@@ -31,7 +31,9 @@ func (h *OpsHandler) GetServiceTraffic(c *gin.Context) {
 	}
 	for k := range c.Request.URL.Query() {
 		switch k {
-		case "range", "interval", "start", "end":
+		case "range", "interval", "start", "end", "timezone":
+			// The shared panel client adds timezone to every GET. Traffic
+			// buckets remain UTC-aligned; it is display metadata, not a filter.
 		default:
 			response.BadRequest(c, "Unsupported filter; service traffic is a whole-instance summary")
 			return

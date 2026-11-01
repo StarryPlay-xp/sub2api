@@ -29,7 +29,7 @@ func TestServiceTrafficHandlerAccessAndFilters(t *testing.T) {
 		name, query      string
 		scoped, disabled bool
 		status           int
-	}{{"allowed", "?range=24h", false, false, 200}, {"scoped", "", true, false, 403}, {"disabled", "", false, true, 404}, {"group filter rejected", "?group_id=1", false, false, 400}, {"range rejected", "?range=365d", false, false, 400}, {"unaligned rejected", "?range=custom&start=2026-10-31T00:00:01Z&end=2026-10-31T01:00:00Z", false, false, 400}} {
+	}{{"allowed", "?range=24h", false, false, 200}, {"panel timezone accepted", "?range=24h&timezone=Asia%2FTaipei", false, false, 200}, {"platform filter rejected", "?platform=openai", false, false, 400}, {"scoped", "", true, false, 403}, {"disabled", "", false, true, 404}, {"group filter rejected", "?group_id=1", false, false, 400}, {"range rejected", "?range=365d", false, false, 400}, {"unaligned rejected", "?range=custom&start=2026-10-31T00:00:01Z&end=2026-10-31T01:00:00Z", false, false, 400}} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &serviceTrafficHandlerStore{}
 			collector := traffic.NewCollector(store)
