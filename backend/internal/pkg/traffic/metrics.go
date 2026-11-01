@@ -55,9 +55,11 @@ func (p Peaks) Merge(other Peaks) {
 }
 func (p Peaks) Clone() Peaks { v := Peaks{}; v.Merge(p); return v }
 
-// PeaksFromRates returns nil for delayed/partial samples, not a fabricated zero.
+// PeaksFromRates allows small scheduler jitter around a one-second tick.
+// Larger deviations are not comparable one-second peaks. Lifecycle fragments
+// must additionally be excluded by the caller, even within this tolerance.
 func PeaksFromRates(values map[string]float64, at time.Time, seconds float64) Peaks {
-	if seconds < 0.5 || seconds > 1.5 {
+	if seconds < 0.9 || seconds > 1.1 {
 		return nil
 	}
 	p := Peaks{}
@@ -145,6 +147,16 @@ func (m *Meter) Add(direction, n int) {
 	}
 }
 func (m *Meter) Sample(now time.Time) {
+	m.sample(now, false)
+}
+
+// SampleFinal preserves all remaining bytes without promoting an unscheduled
+// shutdown fragment to a one-second peak.
+func (m *Meter) SampleFinal(now time.Time) {
+	m.sample(now, true)
+}
+
+func (m *Meter) sample(now time.Time, final bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	seconds := now.Sub(m.last).Seconds()
@@ -155,12 +167,16 @@ func (m *Meter) Sample(now time.Time) {
 	delta := counts.Sub(m.previous)
 	m.previous = counts
 	m.last = now
+	startupFragment := m.seq == 0 && seconds < 1
 	m.seq++
 	rates := map[string]float64{}
 	for i, n := range delta.Vector() {
 		rates[Keys[i]] = float64(n) / seconds
 	}
 	peaks := PeaksFromRates(rates, now, seconds)
+	if final || startupFragment {
+		peaks = nil
+	}
 	state := "sampled"
 	if peaks == nil {
 		state = "invalid_interval"

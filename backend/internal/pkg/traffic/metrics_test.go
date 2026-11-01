@@ -90,6 +90,62 @@ func TestTrafficMeasuredElapsedTimeAndEqualPeakKeepsFirst(t *testing.T) {
 	p.Merge(Peaks{"out": {1000, now.Add(time.Second), 1}})
 	require.Equal(t, now, p["out"].At)
 }
+
+func TestTrafficStartupFragmentCannotSetPeak(t *testing.T) {
+	for _, initial := range []time.Duration{533 * time.Millisecond, 999 * time.Millisecond} {
+		t.Run(initial.String(), func(t *testing.T) {
+			start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+			m := NewMeter("startup", start)
+			m.Add(ClientIn, 10000)
+			m.Sample(start.Add(initial))
+			for _, b := range m.Snapshot(false).Buckets {
+				require.Empty(t, b.Peaks)
+				require.Equal(t, uint64(10000), b.Bytes.ClientIn)
+				require.Equal(t, uint64(1), b.Quality.InvalidSamples)
+			}
+			// A steady-state tick slightly below one second is normal clock jitter.
+			m.Add(ClientIn, 999)
+			m.Sample(start.Add(initial + 999*time.Millisecond))
+			for _, b := range m.Snapshot(false).Buckets {
+				require.InDelta(t, 1000, b.Peaks["in"].BytesPerSecond, 1e-9)
+				require.Equal(t, uint64(10999), b.Bytes.ClientIn)
+				require.Equal(t, uint64(1), b.Quality.ValidSamples)
+			}
+		})
+	}
+}
+
+func TestPeakWindowRejectsLargeSchedulerSkew(t *testing.T) {
+	for _, seconds := range []float64{0.533, 0.899, 1.101, 1.5} {
+		require.Nil(t, PeaksFromRates(map[string]float64{"total": 1000}, time.Now(), seconds))
+	}
+	for _, seconds := range []float64{0.9, 0.999, 1, 1.001, 1.1} {
+		require.NotNil(t, PeaksFromRates(map[string]float64{"total": 1000}, time.Now(), seconds))
+	}
+}
+
+func TestTrafficFinalSamplePreservesBytesWithoutChangingPeak(t *testing.T) {
+	for _, tail := range []time.Duration{533 * time.Millisecond, 999 * time.Millisecond, time.Second} {
+		t.Run(tail.String(), func(t *testing.T) {
+			start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+			m := NewMeter("shutdown", start)
+			m.Add(ClientOut, 100)
+			m.Sample(start.Add(time.Second))
+			m.Add(ClientOut, 10000)
+			m.SampleFinal(start.Add(time.Second + tail))
+			s := m.Snapshot(true)
+			for _, b := range s.Buckets {
+				require.Equal(t, uint64(10100), b.Bytes.ClientOut)
+				require.Equal(t, 100.0, b.Peaks["out"].BytesPerSecond)
+				require.Equal(t, start.Add(time.Second), b.Peaks["out"].At)
+				require.Equal(t, uint64(1), b.Quality.ValidSamples)
+				require.Equal(t, uint64(1), b.Quality.InvalidSamples)
+			}
+			m.Ack(s)
+			require.Equal(t, s.Buckets[0].Bytes, m.Snapshot(true).Buckets[0].Bytes)
+		})
+	}
+}
 func BenchmarkTrafficCount(b *testing.B) {
 	m := NewMeter("bench", time.Now())
 	b.RunParallel(func(pb *testing.PB) {

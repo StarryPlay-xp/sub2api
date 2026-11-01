@@ -38,7 +38,7 @@ func NewCollector(store Store) *Collector {
 			case <-t.C:
 				c.Meter.Sample(time.Now())
 			case <-c.stop:
-				c.Meter.Sample(time.Now())
+				c.Meter.SampleFinal(time.Now())
 				return
 			}
 		}

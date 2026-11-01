@@ -60,6 +60,16 @@ func NewMeter(c *Counters, now time.Time) *Meter {
 }
 
 func (m *Meter) Sample(now time.Time) (Rate, error) {
+	return m.sample(now, false)
+}
+
+// SampleFinal records the tail counters when a runtime is retired. This
+// unscheduled lifecycle sample must not compete with periodic one-second peaks.
+func (m *Meter) SampleFinal(now time.Time) (Rate, error) {
+	return m.sample(now, true)
+}
+
+func (m *Meter) sample(now time.Time, final bool) (Rate, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c := m.counts.Snapshot()
@@ -80,6 +90,11 @@ func (m *Meter) Sample(now time.Time) (Rate, error) {
 	seconds := now.Sub(m.last.at).Seconds()
 	txRate, rxRate := float64(c.TX-m.last.counts.TX)/seconds, float64(c.RX-m.last.counts.RX)/seconds
 	peaks := traffic.PeaksFromRates(map[string]float64{"tx": txRate, "rx": rxRate, "total": txRate + rxRate}, now, seconds)
+	// Nodes start between ticks of the manager's shared sampling clock. Their
+	// first tick may therefore cover only a fraction of a second.
+	if final || (m.seq == 0 && seconds < 1) {
+		peaks = nil
+	}
 	if b.PeakHistory == nil {
 		b.PeakHistory = &traffic.PeakHistory{Peaks: traffic.Peaks{}}
 	}

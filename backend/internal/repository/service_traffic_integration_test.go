@@ -125,3 +125,63 @@ func TestWireGuardPeakUpgradeAndIdempotentRollup(t *testing.T) {
 		require.Equal(t, uint64(2), r.PeakHistory.Quality.ValidSamples)
 	}
 }
+
+func TestTrafficLifecycleFragmentsPersistBytesButNotPeaks(t *testing.T) {
+	db := wireguardTestDB(t)
+	ctx := context.Background()
+	start := time.Now().UTC().Truncate(time.Hour).Add(time.Minute)
+	window := wgtunnel.TrafficWindow{Start: start.Truncate(time.Hour), End: start.Add(time.Minute)}
+	serviceStore := &ServiceTrafficStore{DB: db}
+	wgStore := &WireGuardStore{DB: db}
+	serviceMeter := traffic.NewMeter("fragments", start)
+	var counts wgtunnel.Counters
+	wgMeter := wgtunnel.NewMeter(&counts, start)
+
+	// The first and final bursts would dominate the peak if either fragment
+	// were treated as a periodic sample. All three bursts must still be retained
+	// in the byte counters, including when checkpoints are retried.
+	for i, elapsed := range []time.Duration{533 * time.Millisecond, 1533 * time.Millisecond, 2483 * time.Millisecond} {
+		n := 10000
+		if i == 1 {
+			n = 100
+		}
+		serviceMeter.Add(traffic.ClientIn, n)
+		counts.TX.Add(uint64(n))
+		final := i == 2
+		if final {
+			serviceMeter.SampleFinal(start.Add(elapsed))
+			_, err := wgMeter.SampleFinal(start.Add(elapsed))
+			require.NoError(t, err)
+		} else {
+			serviceMeter.Sample(start.Add(elapsed))
+			_, err := wgMeter.Sample(start.Add(elapsed))
+			require.NoError(t, err)
+		}
+		snapshot := serviceMeter.Snapshot(final)
+		checkpoint, gap := wgMeter.Checkpoint(1, "fragments", 1, final)
+		for retry := 0; retry < 2; retry++ {
+			require.NoError(t, serviceStore.Save(ctx, snapshot))
+			require.NoError(t, wgStore.SaveCheckpoint(ctx, checkpoint, gap))
+		}
+	}
+
+	for _, interval := range []string{"minute", "hour"} {
+		window.Interval = interval
+		serviceReport, err := serviceStore.Report(ctx, window)
+		require.NoError(t, err)
+		require.Equal(t, "20100", serviceReport.TotalBytes)
+		require.Equal(t, 100.0, serviceReport.Peaks["total"].BytesPerSecond)
+		require.Equal(t, start.Add(1533*time.Millisecond), serviceReport.Peaks["total"].At)
+		require.Equal(t, uint64(1), serviceReport.Quality.ValidSamples)
+		require.Equal(t, uint64(2), serviceReport.Quality.InvalidSamples)
+		require.True(t, serviceReport.Incomplete)
+
+		wgReport, err := wgStore.TrafficReport(ctx, 1, window)
+		require.NoError(t, err)
+		require.Equal(t, "20100", wgReport.Total)
+		require.Equal(t, 100.0, wgReport.PeakHistory.Peaks["total"].BytesPerSecond)
+		require.Equal(t, start.Add(1533*time.Millisecond), wgReport.PeakHistory.Peaks["total"].At)
+		require.Equal(t, uint64(1), wgReport.PeakHistory.Quality.ValidSamples)
+		require.Equal(t, uint64(2), wgReport.PeakHistory.Quality.InvalidSamples)
+	}
+}

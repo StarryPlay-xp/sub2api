@@ -150,7 +150,7 @@ func (m *Manager) retireLocked(id int64) {
 		return
 	}
 	n.runtime.Close()
-	_, _ = n.meter.Sample(time.Now())
+	_, _ = n.meter.SampleFinal(time.Now())
 	c, gap := n.meter.Checkpoint(id, n.id, n.version, true)
 	m.retired[n.id] = retiredRuntime{c, gap}
 	delete(m.nodes, id)
