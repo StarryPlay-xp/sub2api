@@ -124,26 +124,46 @@ type Snapshot struct {
 	Closed     bool
 	Incomplete bool
 	Buckets    []Bucket
+	Subjects   []SubjectBucket
 }
 
 type Meter struct {
-	counters      [4]atomic.Uint64
-	mu            sync.Mutex
-	runtimeID     string
-	started, last time.Time
-	previous      Bytes
-	seq           uint64
-	incomplete    bool
-	buckets       map[string]Bucket
-	current       Current
+	root                  *Meter
+	target                atomic.Pointer[subjectCounter]
+	source                atomic.Pointer[Meter]
+	bound, ended, request bool
+	overflowed            bool
+	overflowScopes        int
+	unattributed          *subjectCounter
+	subjects              map[Subject]*subjectCounter
+	subjectBuckets        map[subjectBucketKey]SubjectBucket
+	subjectLive           map[Subject]SubjectCurrent
+	hostLive              SubjectCurrent
+	subjectLimit          int
+	overflow              bool
+	mu                    sync.Mutex
+	runtimeID             string
+	started, last         time.Time
+	seq                   uint64
+	incomplete            bool
+	buckets               map[string]Bucket
+	current               Current
 }
 
 func NewMeter(id string, now time.Time) *Meter {
-	return &Meter{runtimeID: id, started: now, last: now, buckets: map[string]Bucket{}, current: Current{State: "warming_up"}}
+	return &Meter{unattributed: &subjectCounter{subject: Subject{Type: "unattributed"}}, subjects: map[Subject]*subjectCounter{}, subjectBuckets: map[subjectBucketKey]SubjectBucket{}, subjectLive: map[Subject]SubjectCurrent{}, subjectLimit: MaxSubjects, runtimeID: id, started: now, last: now, buckets: map[string]Bucket{}, current: Current{State: "warming_up"}}
 }
 func (m *Meter) Add(direction, n int) {
 	if m != nil && direction >= 0 && direction < 4 && n > 0 {
-		m.counters[direction].Add(uint64(n))
+		if source := m.source.Load(); source != nil {
+			source.Add(direction, n)
+			return
+		}
+		c := m.target.Load()
+		if c == nil {
+			c = m.unattributed
+		}
+		c.bytes[direction].Add(uint64(n))
 	}
 }
 func (m *Meter) Sample(now time.Time) {
@@ -163,12 +183,10 @@ func (m *Meter) sample(now time.Time, final bool) {
 	if seconds <= 0 {
 		return
 	}
-	counts := Bytes{m.counters[0].Load(), m.counters[1].Load(), m.counters[2].Load(), m.counters[3].Load()}
-	delta := counts.Sub(m.previous)
-	m.previous = counts
-	m.last = now
 	startupFragment := m.seq == 0 && seconds < 1
 	m.seq++
+	delta := m.sampleSubjects(now, seconds, !final && !startupFragment && seconds >= 0.9 && seconds <= 1.1)
+	m.last = now
 	rates := map[string]float64{}
 	for i, n := range delta.Vector() {
 		rates[Keys[i]] = float64(n) / seconds
@@ -216,11 +234,29 @@ func (m *Meter) Snapshot(closed bool) Snapshot {
 		b.Peaks = b.Peaks.Clone()
 		s.Buckets = append(s.Buckets, b)
 	}
+	for _, b := range m.subjectBuckets {
+		if b.Sequence <= b.savedSequence {
+			continue
+		}
+		b.Peaks = b.Peaks.Clone()
+		s.Subjects = append(s.Subjects, b)
+	}
 	return s
 }
 func (m *Meter) Ack(s Snapshot) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, b := range s.Subjects {
+		key := subjectBucketKey{b.Subject, b.Start}
+		if current, ok := m.subjectBuckets[key]; ok {
+			if current.Sequence == b.Sequence && b.Start.Before(m.last.UTC().Truncate(time.Hour)) {
+				delete(m.subjectBuckets, key)
+			} else if b.Sequence > current.savedSequence {
+				current.savedSequence = b.Sequence
+				m.subjectBuckets[key] = current
+			}
+		}
+	}
 	for _, b := range s.Buckets {
 		g := time.Minute
 		if b.Interval == "hour" {

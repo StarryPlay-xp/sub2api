@@ -278,6 +278,7 @@ func (l *openAIWSConnLease) Release() {
 	if !l.released.CompareAndSwap(false, true) {
 		return
 	}
+	l.conn.trafficMeter.SetSource(nil)
 	l.conn.release()
 	if l.pool != nil {
 		l.pool.notifyAccountPoolChanged(l.accountID)
@@ -285,8 +286,9 @@ func (l *openAIWSConnLease) Release() {
 }
 
 type openAIWSConn struct {
-	id string
-	ws openAIWSClientConn
+	trafficMeter *traffic.Meter
+	id           string
+	ws           openAIWSClientConn
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -1155,6 +1157,9 @@ func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireReque
 		}
 		req.Route.RecordConnectionAttempt(ctx, remote, lease.reused, "websocket_acquired")
 	}
+	if lease != nil && lease.conn != nil {
+		lease.conn.trafficMeter.SetSource(req.TrafficMeter)
+	}
 	return lease, err
 }
 
@@ -1900,6 +1905,7 @@ func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
 		return
 	}
 	req = cloneOpenAIWSAcquireRequest(*ap.lastAcquire)
+	req.TrafficMeter = req.TrafficMeter.Root()
 	generation = ap.generation
 	ap.prewarmActive = true
 	if cooldown := p.prewarmCooldown(); cooldown > 0 {
@@ -1952,6 +1958,7 @@ func (p *openAIWSConnPool) targetConnCountLocked(ap *openAIWSAccountPool, maxCon
 }
 
 func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequest, total int, generations ...uint64) {
+	req.TrafficMeter = req.TrafficMeter.Root()
 	generation := uint64(0)
 	if len(generations) > 0 {
 		generation = generations[0]
@@ -2145,7 +2152,7 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 
 func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConn, error) {
 	if req.TrafficMeter != nil {
-		ctx = traffic.WithMeter(ctx, req.TrafficMeter)
+		ctx = traffic.WithMeter(ctx, req.TrafficMeter.Switch())
 	}
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
@@ -2187,6 +2194,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
+	pooledConn.trafficMeter = traffic.FromContext(ctx)
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)

@@ -12,9 +12,11 @@ type ServiceTrafficRepository interface {
 	Report(context.Context, wgtunnel.TrafficWindow) (ServiceTrafficReport, error)
 }
 type ServiceTrafficService struct {
-	Collector *traffic.Collector
-	Store     ServiceTrafficRepository
-	Limits    BandwidthLimitRepository
+	Collector     *traffic.Collector
+	Store         ServiceTrafficRepository
+	Limits        BandwidthLimitRepository
+	Subjects      TrafficSubjectRepository
+	identityCache trafficIdentityCache
 }
 
 func (s *ServiceTrafficService) Close() {

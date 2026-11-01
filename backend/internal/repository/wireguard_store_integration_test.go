@@ -76,6 +76,14 @@ func wireguardTestDBVersion(t *testing.T, upgraded bool) *sql.DB {
 	if _, err = isolated.Exec(string(peakMigration)); err != nil {
 		t.Fatal(err)
 	}
+	subjectMigration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "254_service_traffic_subjects.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = isolated.Exec(string(subjectMigration))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if upgraded {
 		applyWireGuardLifecycleMigration(t, isolated)
 	}

@@ -15,7 +15,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// v0.3.0 contains exactly the candidate's migration set except 253. Build that
+// v0.3.0 contains exactly the candidate's migration set except 253 and 254. Build that
 // schema first, then verify the additive upgrade against administrator-edited
 // state, not only an empty database or an already-upgraded schema.
 func TestServiceTrafficUpgradePreservesConfiguredState(t *testing.T) {
@@ -34,7 +34,7 @@ func TestServiceTrafficUpgradePreservesConfiguredState(t *testing.T) {
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
-		if name == "253_service_traffic_peaks.sql" {
+		if name == "253_service_traffic_peaks.sql" || name == "254_service_traffic_subjects.sql" {
 			continue
 		}
 		data, readErr := migrations.FS.ReadFile(name)

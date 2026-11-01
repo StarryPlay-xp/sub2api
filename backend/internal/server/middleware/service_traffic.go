@@ -16,6 +16,8 @@ func ServiceTraffic(m *traffic.Meter) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		m := m.Scope()
+		defer m.CloseScope()
 		c.Request = c.Request.WithContext(traffic.WithMeter(c.Request.Context(), m))
 		c.Request.Body = traffic.Body(c.Request.Body, m, traffic.ClientIn)
 		original := c.Writer

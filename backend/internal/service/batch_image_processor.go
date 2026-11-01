@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net/http"
 	"sort"
@@ -66,6 +67,12 @@ func (p *BatchImageProviderProcessor) Process(ctx context.Context, batchID strin
 	if err != nil {
 		return BatchImageProcessResult{}, err
 	}
+	keyID := int64(0)
+	if job.APIKeyID != nil {
+		keyID = *job.APIKeyID
+	}
+	ctx, closeTraffic := traffic.BackgroundScope(ctx, job.UserID, keyID)
+	defer closeTraffic()
 	if isBatchImageProcessorDoneStatus(job.Status) {
 		if err := p.releaseTerminalHold(ctx, job); err != nil {
 			return BatchImageProcessResult{}, err

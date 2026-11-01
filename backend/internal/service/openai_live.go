@@ -658,8 +658,10 @@ func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
 			s.finalizeLiveCall(record)
 			return
 		}
-		upstream, dialErr := s.dialLiveSideband(traffic.WithMeter(context.Background(), s.trafficMeter), record)
+		observerCtx, closeTraffic := traffic.BackgroundScope(traffic.WithMeter(context.Background(), s.trafficMeter), record.UserID, record.APIKeyID)
+		upstream, dialErr := s.dialLiveSideband(observerCtx, record)
 		if dialErr != nil {
+			closeTraffic()
 			if !s.waitForLiveObserverRetry(record) {
 				return
 			}
@@ -667,6 +669,7 @@ func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
 		}
 		runErr := s.runLiveObserverConnection(record, upstream)
 		_ = upstream.Close()
+		closeTraffic()
 		if errors.Is(runErr, ErrLiveControllerChanged) {
 			return
 		}
