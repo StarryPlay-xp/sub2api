@@ -1,7 +1,7 @@
 export default {
   exitIP: '出口 IP', exitIPDetails: '出口 IP 详情', exitIPUnobserved: '未观测', exitIPMissing: '暂无记录', exitIPExpired: '当时观测已过期', exitIPPartial: '部分连接未确认', exitIPLoadError: '加载失败',
   manage: '管理隧道', viewState: '查看隧道状态',
-  title: 'WireGuard 出口', create: '添加 WireGuard', name: '节点名称', configuration: 'WireGuard 配置', configurationHint: '粘贴单个 Peer 的配置。编辑时留空表示保留原密钥；密钥不会回显或导出。', expiry: '到期时间（可选）', save: '保存节点', pause: '暂停', resume: '手动恢复', probe4: '验证 IPv4 出口', probe6: '验证 IPv6 出口', keyMissing: '请先设置 WIREGUARD_KEY_FILE，指向稳定保存、仅文件所有者可读的加密密钥文件，内容为 32 字节密钥的 64 位十六进制文本。', blocked: '已暂停，不会自动回退', ready: '已启用', inactive: '已停用或过期', failureHint: '使用此节点的请求在失败时停止；解决问题后需手动恢复。', traffic: '隧道流量', sent: '已发送', received: '已接收', rate: '当前速率', range24h: '24 小时', range90d: '90 天', perMinute: '按分钟', perHour: '按小时', metricBasis: '统计口径', sampledAt: '最近采样', basis: '统计应用收发的加密 UDP 载荷，包括握手、保活、DNS 和探测；不含外层网络报头，不等同于云厂商计费流量。', history: '流量历史', incomplete: '记录可能不完整：该节点历史上曾有采样缺失，可能影响所选周期的明细。', saved: '最近保存', evidence: '出口证据', evidenceHint: 'HTTPS 回显服务的观测仅证明该出口路径，不能保证每个上游看到相同来源 IP。客户端 IP 保持原义。', noEvidence: '暂无出口观测', stale: '已过期或来自旧运行实例', observed: '已观测', attempts: '请求出口证据', noAttempts: '暂无记录：请求可能发生在启用记录之前、仍在传输，或记录未能保存。', route: '出口方式', account: '账户', version: '配置版本', reused: '复用连接', newConnection: '新建连接', outcome: '结果', loading: '加载中…', error: '操作失败，请重新加载节点后重试。', unknown: '未知', telemetryGap: '部分请求出口记录未能保存。', running: '运行中', notRunning: '未运行', replace: '替换配置（可选）', close: '关闭', created: '节点已保存，可在账户的代理设置中选择它。', peer: '仅支持一个 Peer，不支持脚本或自动回退。',
+  title: 'WireGuard 出口', create: '添加 WireGuard', name: '节点名称', configuration: 'WireGuard 配置', configurationHint: '粘贴单个 Peer 的配置。编辑时留空表示保留原密钥；密钥不会回显或导出。', expiry: '到期时间（可选）', save: '保存节点', pause: '暂停', resume: '手动恢复', probe4: '验证 IPv4 出口', probe6: '验证 IPv6 出口', keyMissing: '请先设置 WIREGUARD_KEY_FILE，指向稳定保存、仅文件所有者可读的加密密钥文件，内容为 32 字节密钥的 64 位十六进制文本。', blocked: '已暂停，不会自动回退', ready: '已启用', inactive: '已停用或过期', failureHint: '使用此节点的请求在失败时停止；解决问题后需手动恢复。', traffic: '隧道流量', sent: '已发送', received: '已接收', rate: '当前速率（约 1 秒平均）', range24h: '24 小时', range90d: '90 天', perMinute: '按分钟', perHour: '按小时', metricBasis: '统计口径', sampledAt: '最近采样', basis: '统计应用收发的加密 UDP 载荷，包括握手、保活、DNS 和探测；不含外层网络报头，不等同于云厂商计费流量。', history: '流量历史', incomplete: '记录可能不完整：该节点历史上曾有采样缺失，可能影响所选周期的明细。', saved: '最近保存', evidence: '出口证据', evidenceHint: 'HTTPS 回显服务的观测仅证明该出口路径，不能保证每个上游看到相同来源 IP。客户端 IP 保持原义。', noEvidence: '暂无出口观测', stale: '已过期或来自旧运行实例', observed: '已观测', attempts: '请求出口证据', noAttempts: '暂无记录：请求可能发生在启用记录之前、仍在传输，或记录未能保存。', route: '出口方式', account: '账户', version: '配置版本', reused: '复用连接', newConnection: '新建连接', outcome: '结果', loading: '加载中…', error: '操作失败，请重新加载节点后重试。', unknown: '未知', telemetryGap: '部分请求出口记录未能保存。', running: '运行中', notRunning: '未运行', replace: '替换配置（可选）', close: '关闭', created: '节点已保存，可在账户的代理设置中选择它。', peer: '仅支持一个 Peer，不支持脚本或自动回退。',
   range7d: '7 天', range30d: '30 天', customRange: '自定义',
   periodTraffic: '所选周期', total: '合计',
   customStart: '开始日期', customEnd: '结束日期', customToNow: '统计到现在', customApply: '应用',
@@ -25,5 +25,14 @@ export default {
   trafficDateInvalid: '日期格式无效，结束时间不能超过当前时间 25 小时。',
   trafficBoundaryUnaligned: '自选时间未对齐 UTC 时间桶，请改用 UTC 日期或整点时间。',
   trafficRetentionExceeded: '开始时间早于保留范围，最早可选 {date}。', trafficRetentionExceededGeneric: '开始时间早于保留范围。',
-  trafficForbidden: '当前管理员权限不足，无法读取流量。', trafficUnavailable: 'WireGuard 服务暂不可用，请稍后重试。'
+  trafficForbidden: '当前管理员权限不足，无法读取流量。', trafficUnavailable: 'WireGuard 服务暂不可用，请稍后重试。',
+  peak: '1 秒峰值', peakUnknown: '未知', peakNoValidSample: '没有有效的 1 秒样本', peakLegacy: '升级前历史无峰值',
+  peakObserved: '峰值观察范围', peakSamples: '有效样本 {valid} · 异常样本 {invalid}',
+  peakLegacyHint: '所选周期的记录来自升级前，没有峰值数据；累计量不受影响。',
+  peakBasis: '峰值是约 1 秒窗口的平均速率；合计峰值取同一次采样发送与接收之和的最大值，不是两者峰值相加。不能反映毫秒级突发，时间为采样结束时间。',
+  peakPartial: '峰值仅覆盖 {time} 之后的采样；更早的记录来自升级前或缺少采样，没有峰值数据。',
+  invalidSamples: '{count} 个采样窗口偏离 1 秒（允许 0.5–1.5 秒），字节已计入累计量，但未参与峰值。',
+  rateDelayed: '采样延迟', rateWarmingUp: '等待采样',
+  nodeBandwidthPeak: '节点带宽峰值（1 秒平均 · 发送+接收）',
+  nodeBandwidthPeakHint: '自建 VPS 中转节点要把本站发来的数据转给上游，再把上游的回复转回本站，节点每个方向的负载约等于本站发送 + 接收。这里取同一秒发送与接收之和的最大值（不是两者峰值相加），用来对比节点的带宽上限。商用 VPN 一般按上传、下载分别限速，请看下方发送、接收峰值。数值为加密 UDP 载荷，不含外层报头。'
 }

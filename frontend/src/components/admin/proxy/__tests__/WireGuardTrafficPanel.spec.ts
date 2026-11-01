@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Bar } from 'vue-chartjs'
 import WireGuardTrafficPanel from '../WireGuardTrafficPanel.vue'
-import type { TrafficReport, WGDetails, WGNode } from '@/api/admin/wireguard'
+import type { TrafficReport, WGDetails, WGNode, WGPeakHistory } from '@/api/admin/wireguard'
+import { formatSampleTime } from '@/utils/trafficFormat'
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('vue-chartjs', () => ({
@@ -30,6 +31,23 @@ const rate = (overrides: Partial<WGDetails['rate']> = {}): WGDetails['rate'] => 
   tx_bytes_per_second: 2048,
   rx_bytes_per_second: 0,
   sampled_at: '2026-10-31T05:00:00Z',
+  window_seconds: 1.001,
+  ...overrides
+})
+
+const PEAK_AT = '2026-10-31T05:01:07Z'
+const peakHistory = (overrides: Partial<WGPeakHistory> = {}): WGPeakHistory => ({
+  peaks: {
+    tx: { bytes_per_second: 2658525, at: PEAK_AT, window_seconds: 1.002 },
+    rx: { bytes_per_second: 2308377, at: '2026-10-31T05:01:09Z', window_seconds: 0.998 },
+    total: { bytes_per_second: 4194304, at: '2026-10-31T05:01:08Z', window_seconds: 1 }
+  },
+  quality: {
+    first_sample_at: '2026-10-31T05:00:01Z',
+    last_sample_at: '2026-10-31T05:01:59Z',
+    valid_samples: 119,
+    invalid_samples: 0
+  },
   ...overrides
 })
 
@@ -252,6 +270,107 @@ describe('WireGuardTrafficPanel', () => {
     expect(wrapper.text()).toContain('wireguard.incomplete')
     expect(wrapper.text()).toContain('wireguard.telemetryGap')
     wrapper.unmount()
+  })
+
+  it('shows period peaks from peak_history with their sample times', () => {
+    const wrapper = create({ report: report({ peak_window_seconds: 1, peak_history: peakHistory() }) })
+    const peaks = wrapper.findAll('[data-testid="wg-peak"]').map((item) => item.text())
+    expect(peaks[0]).toContain('2.54 MiB/s')
+    expect(peaks[0]).toContain(formatSampleTime(PEAK_AT))
+    expect(peaks[0]).toContain('21.27 Mbps')
+    expect(peaks[1]).toContain('2.2 MiB/s')
+    // 合计峰值取同一采样内 tx+rx 的最大值，不是两者峰值相加
+    expect(peaks[2]).toContain('4 MiB/s')
+    expect(peaks[2]).not.toContain('4.74 MiB/s')
+    const quality = wrapper.get('[data-testid="wg-peak-quality"]').text()
+    expect(quality).toContain(formatSampleTime('2026-10-31T05:00:01Z'))
+    expect(quality).toContain('wireguard.peakSamples')
+    // 峰值行不影响原有累计量展示
+    expect(wrapper.findAll('.text-2xl').map((value) => value.text())).toEqual(['512 MiB', '1 GiB', '1.5 GiB'])
+    wrapper.unmount()
+  })
+
+  it('headlines the same-sample sent + received peak for the relay node', () => {
+    const wrapper = create({ report: report({ peak_history: peakHistory() }) })
+    const headline = wrapper.get('[data-testid="wg-bandwidth"]').text()
+    expect(headline).toContain('wireguard.nodeBandwidthPeak')
+    expect(headline).toContain('4 MiB/s')
+    expect(headline).toContain('33.55 Mbps')
+    expect(headline).toContain(formatSampleTime('2026-10-31T05:01:08Z'))
+    // 取同一秒发送+接收之和，而不是发送峰值 + 接收峰值（4.74 MiB/s）
+    expect(headline).not.toContain('4.74 MiB/s')
+    wrapper.unmount()
+  })
+
+  it('shows the node bandwidth peak as unknown for legacy or empty history', () => {
+    const legacy = create({ report: report({ peak_history: null }) })
+    const legacyText = legacy.get('[data-testid="wg-bandwidth"]').text()
+    expect(legacyText).toContain('wireguard.peakUnknown')
+    expect(legacyText).toContain('wireguard.peakLegacy')
+    legacy.unmount()
+
+    const empty = create({ report: report({ has_records: false, bucket_count: 0, history: [], peak_history: null }) })
+    const emptyText = empty.get('[data-testid="wg-bandwidth"]').text()
+    expect(emptyText).toContain('—')
+    expect(emptyText).toContain('wireguard.noRecords')
+    empty.unmount()
+
+    const failed = create({ report: null, error: 'request failed' })
+    expect(failed.find('[data-testid="wg-bandwidth"]').exists()).toBe(false)
+    failed.unmount()
+  })
+
+  it('shows legacy history peaks as unknown instead of zero', () => {
+    const wrapper = create({ report: report({ peak_history: null }) })
+    const peaks = wrapper.findAll('[data-testid="wg-peak"]').map((item) => item.text())
+    expect(peaks).toHaveLength(3)
+    expect(peaks.every((text) => text.includes('wireguard.peakUnknown'))).toBe(true)
+    expect(peaks.every((text) => text.includes('wireguard.peakLegacy'))).toBe(true)
+    expect(peaks.some((text) => text.includes('0 B/s'))).toBe(false)
+    expect(wrapper.get('[data-testid="wg-peak-quality"]').text()).toContain('wireguard.peakLegacyHint')
+    wrapper.unmount()
+  })
+
+  it('warns when peaks only cover part of the records or samples were invalid', () => {
+    const wrapper = create({
+      report: report({
+        first_record_at: '2026-10-31T04:00:00Z',
+        incomplete: true,
+        peak_history: peakHistory({
+          quality: {
+            first_sample_at: '2026-10-31T05:00:01Z',
+            last_sample_at: '2026-10-31T05:01:59Z',
+            valid_samples: 100,
+            invalid_samples: 2
+          }
+        })
+      })
+    })
+    expect(wrapper.text()).toContain('wireguard.invalidSamples')
+    expect(wrapper.text()).toContain('wireguard.peakPartial')
+    expect(wrapper.text()).toContain('wireguard.incomplete')
+    wrapper.unmount()
+  })
+
+  it('does not treat delayed, warming-up or reset samples as live rates', () => {
+    const delayed = create({ rate: rate({ state: 'invalid_interval', window_seconds: 4.2 }) })
+    const delayedRates = delayed.findAll('[title="wireguard.rate"]')
+    expect(delayedRates.every((item) => item.text() === 'wireguard.rateDelayed')).toBe(true)
+    expect(delayed.text()).toContain('wireguard.sampledAt')
+    delayed.unmount()
+
+    const warming = create({
+      rate: rate({ state: 'warming_up', sampled_at: '0001-01-01T00:00:00Z', window_seconds: 0, tx_bytes_per_second: 0 })
+    })
+    const warmingRates = warming.findAll('[title="wireguard.rate"]')
+    expect(warmingRates.every((item) => item.text() === 'wireguard.rateWarmingUp')).toBe(true)
+    expect(warming.text()).not.toContain('wireguard.sampledAt')
+    warming.unmount()
+
+    const reset = create({ rate: rate({ state: 'counter_reset' }) })
+    expect(reset.findAll('[title="wireguard.rate"]').every((item) => item.text() === '—')).toBe(true)
+    expect(reset.text()).not.toContain('wireguard.sampledAt')
+    reset.unmount()
   })
 
   it('clears totals and shows an error when the request fails', () => {

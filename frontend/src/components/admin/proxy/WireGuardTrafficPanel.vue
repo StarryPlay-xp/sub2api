@@ -149,12 +149,39 @@
         </span>
       </div>
 
+      <!-- 节点带宽峰值：自建中转节点每个方向的负载约等于本站发送 + 接收，取同一秒合计的最大值 -->
+      <div
+        v-if="report"
+        data-testid="wg-bandwidth"
+        class="rounded-xl border border-primary-100 bg-primary-50/40 p-4 dark:border-primary-900/40 dark:bg-primary-900/10"
+      >
+        <div class="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-dark-200">
+          {{ t('wireguard.nodeBandwidthPeak') }}
+          <HelpTooltip :content="t('wireguard.nodeBandwidthPeakHint')" width-class="w-80" />
+        </div>
+        <div class="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span class="text-3xl font-semibold tracking-tight text-gray-900 tabular-nums dark:text-white">
+            {{ peakValueText('total') }}
+          </span>
+          <span v-if="peakOf('total')" class="text-sm font-medium text-gray-500 tabular-nums dark:text-dark-300">
+            ≈ {{ formatMbps(peakOf('total')!.bytes_per_second) }}
+          </span>
+        </div>
+        <p class="mt-1 text-[11px] text-gray-500 tabular-nums dark:text-dark-400">
+          {{ peakDetailText('total') || t('wireguard.noRecords') }}
+        </p>
+      </div>
+      <div
+        v-else-if="loading"
+        class="h-[104px] animate-pulse rounded-xl border border-gray-100 bg-gray-100 dark:border-dark-700/70 dark:bg-dark-700/60"
+      ></div>
+
       <!-- 周期发送 / 接收 / 合计 -->
       <div v-if="loading && !report" class="grid gap-3 md:grid-cols-3">
         <div
           v-for="index in 3"
           :key="index"
-          class="h-[92px] animate-pulse rounded-xl border border-gray-100 bg-gray-100 dark:border-dark-700/70 dark:bg-dark-700/60"
+          class="h-[148px] animate-pulse rounded-xl border border-gray-100 bg-gray-100 dark:border-dark-700/70 dark:bg-dark-700/60"
         ></div>
       </div>
       <div v-else class="grid gap-3 md:grid-cols-3">
@@ -187,7 +214,49 @@
           >
             {{ metric.value }}
           </div>
+          <!-- 所选期间 1 秒平均峰值；升级前历史没有峰值，显示未知而不是 0 -->
+          <div class="mt-3 border-t border-gray-200/70 pt-2.5 dark:border-dark-700/70" data-testid="wg-peak">
+            <div class="flex items-baseline justify-between gap-2 text-[11px]">
+              <span class="text-gray-500 dark:text-dark-400">{{ t('wireguard.peak') }}</span>
+              <span class="font-semibold text-gray-800 tabular-nums dark:text-dark-100">
+                {{ peakValueText(metric.peakKey) }}
+              </span>
+            </div>
+            <div
+              class="mt-0.5 flex min-h-[16px] items-baseline justify-between gap-2 text-[11px] text-gray-400 tabular-nums dark:text-dark-500"
+            >
+              <span class="truncate">{{ peakDetailText(metric.peakKey) }}</span>
+              <span v-if="peakOf(metric.peakKey)" class="shrink-0">
+                ≈ {{ formatMbps(peakOf(metric.peakKey)!.bytes_per_second) }}
+              </span>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <!-- 峰值观察范围：只覆盖有峰值样本的时段 -->
+      <div
+        v-if="report?.has_records"
+        data-testid="wg-peak-quality"
+        class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-gray-500 dark:text-dark-400"
+      >
+        <span class="inline-flex items-center gap-1 font-medium text-gray-600 dark:text-dark-200">
+          {{ t('wireguard.peakObserved') }}
+          <HelpTooltip :content="t('wireguard.peakBasis')" width-class="w-72" />
+        </span>
+        <template v-if="peakObservedText">
+          <span class="tabular-nums">{{ peakObservedText }}</span>
+          <span aria-hidden="true">·</span>
+          <span class="tabular-nums">
+            {{
+              t('wireguard.peakSamples', {
+                valid: report.peak_history?.quality?.valid_samples ?? 0,
+                invalid: report.peak_history?.quality?.invalid_samples ?? 0
+              })
+            }}
+          </span>
+        </template>
+        <span v-else>{{ t('wireguard.peakLegacyHint') }}</span>
       </div>
 
       <p
@@ -287,12 +356,20 @@
 
       <!-- 统计告警 -->
       <div
-        v-if="report?.incomplete || telemetryGap"
+        v-if="report?.incomplete || telemetryGap || invalidPeakSamples > 0 || peakCoverageStart"
         class="space-y-1.5 rounded-xl bg-amber-50/80 px-3 py-2.5 text-[11px] leading-relaxed text-amber-700 ring-1 ring-amber-200/60 dark:bg-amber-950/25 dark:text-amber-300 dark:ring-amber-900/40"
       >
         <p v-if="report?.incomplete" class="flex items-start gap-1.5">
           <Icon name="exclamationTriangle" size="xs" class="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{{ t('wireguard.incomplete') }}</span>
+        </p>
+        <p v-if="invalidPeakSamples > 0" class="flex items-start gap-1.5">
+          <Icon name="exclamationTriangle" size="xs" class="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{{ t('wireguard.invalidSamples', { count: invalidPeakSamples }) }}</span>
+        </p>
+        <p v-if="peakCoverageStart" class="flex items-start gap-1.5">
+          <Icon name="exclamationTriangle" size="xs" class="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{{ t('wireguard.peakPartial', { time: peakCoverageStart }) }}</span>
         </p>
         <p v-if="telemetryGap" class="flex items-start gap-1.5">
           <Icon name="exclamationTriangle" size="xs" class="mt-px h-3.5 w-3.5 shrink-0" />
@@ -309,7 +386,7 @@
         {{ t('wireguard.metricBasis') }}
         <HelpTooltip :content="t('wireguard.basis')" width-class="w-72" />
       </span>
-      <span v-if="rateAvailable" class="tabular-nums">
+      <span v-if="sampleTimeKnown" class="tabular-nums">
         {{ t('wireguard.sampledAt') }} · {{ clock(rate.sampled_at) }}
       </span>
     </footer>
@@ -335,12 +412,15 @@ import { Bar } from 'vue-chartjs'
 import Icon from '@/components/icons/Icon.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import type {
+  TrafficPeak,
   TrafficRange,
   TrafficReport,
   TrafficSelection,
   WGDetails,
-  WGNode
+  WGNode,
+  WGPeakKey
 } from '@/api/admin/wireguard'
+import { formatByteRate, formatMbps, formatSampleTime, isMissingTime } from '@/utils/trafficFormat'
 import {
   firstSelectableDate,
   formatDateInput,
@@ -384,6 +464,7 @@ interface Metric {
   label: string
   value: string
   rate: number | null
+  peakKey: WGPeakKey
   color: string
   icon: MetricIcon
 }
@@ -448,8 +529,10 @@ const palette = (() => {
 })()
 
 const running = computed(() => props.rate.state !== 'not_running')
-const rateAvailable = computed(
-  () => !['not_running', 'no_sample', 'counter_reset'].includes(props.rate.state)
+// 只有正常约 1 秒采样才是可信速率；采样延迟、等待采样以及 no_sample/counter_reset 等异常计数状态都不显示数值。
+const rateAvailable = computed(() => props.rate.state === 'sampled')
+const sampleTimeKnown = computed(
+  () => ['sampled', 'invalid_interval'].includes(props.rate.state) && !isMissingTime(props.rate.sampled_at)
 )
 
 const rangeOptions = computed<{ value: TrafficRange; label: string }[]>(() => [
@@ -624,6 +707,7 @@ const metrics = computed<Metric[]>(() => {
       label: t('wireguard.sent'),
       value: hasRecords ? formatBytes(report!.tx_bytes) : '—',
       rate: props.rate.tx_bytes_per_second,
+      peakKey: 'tx',
       color: palette.sent,
       icon: 'arrowUp'
     },
@@ -632,6 +716,7 @@ const metrics = computed<Metric[]>(() => {
       label: t('wireguard.received'),
       value: hasRecords ? formatBytes(report!.rx_bytes) : '—',
       rate: props.rate.rx_bytes_per_second,
+      peakKey: 'rx',
       color: palette.received,
       icon: 'arrowDown'
     },
@@ -640,6 +725,7 @@ const metrics = computed<Metric[]>(() => {
       label: t('wireguard.total'),
       value: hasRecords ? formatBytes(report!.total_bytes) : '—',
       rate: null,
+      peakKey: 'total',
       color: palette.total,
       icon: 'chartBar'
     }
@@ -681,8 +767,47 @@ function formatBytes(value: string | number, decimals = 2) {
 }
 
 function formatRate(value: number) {
-  return rateAvailable.value ? `${formatBytes(value)}/s` : '—'
+  if (rateAvailable.value) return `${formatBytes(value)}/s`
+  if (props.rate.state === 'invalid_interval') return t('wireguard.rateDelayed')
+  if (props.rate.state === 'warming_up') return t('wireguard.rateWarmingUp')
+  return '—'
 }
+
+// 24 小时等所选期间的峰值直接读取 peak_history，不从曲线平均速率反推。
+function peakOf(key: WGPeakKey): TrafficPeak | null {
+  return props.report?.peak_history?.peaks?.[key] ?? null
+}
+
+function peakValueText(key: WGPeakKey) {
+  if (!props.report?.has_records) return '—'
+  const peak = peakOf(key)
+  return peak ? formatByteRate(peak.bytes_per_second) : t('wireguard.peakUnknown')
+}
+
+function peakDetailText(key: WGPeakKey) {
+  const report = props.report
+  if (!report?.has_records) return ''
+  const peak = peakOf(key)
+  if (peak) return formatSampleTime(peak.at)
+  return report.peak_history ? t('wireguard.peakNoValidSample') : t('wireguard.peakLegacy')
+}
+
+const peakObservedText = computed(() => {
+  const quality = props.report?.peak_history?.quality
+  if (!quality || isMissingTime(quality.first_sample_at) || isMissingTime(quality.last_sample_at)) return ''
+  return `${formatSampleTime(quality.first_sample_at)} – ${formatSampleTime(quality.last_sample_at)}`
+})
+
+const invalidPeakSamples = computed(() => props.report?.peak_history?.quality?.invalid_samples ?? 0)
+
+// 升级前与升级后历史混合时，首个峰值样本晚于最早记录超过一个时间桶，提示峰值不覆盖整个周期。
+const peakCoverageStart = computed(() => {
+  const report = props.report
+  const first = report?.peak_history?.quality?.first_sample_at
+  if (!report?.has_records || !report.first_record_at || !first || isMissingTime(first)) return ''
+  const grain = report.interval === 'minute' ? 60_000 : 3_600_000
+  return Date.parse(first) - Date.parse(report.first_record_at) >= grain ? formatSampleTime(first) : ''
+})
 
 function fullDate(value?: string) {
   return value ? new Date(value).toLocaleString() : '—'
