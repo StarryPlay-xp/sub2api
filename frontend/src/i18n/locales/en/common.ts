@@ -187,6 +187,7 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     bandwidth: 'Bandwidth',
+    traffic: 'Traffic',
     promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',

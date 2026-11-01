@@ -97,4 +97,10 @@ describe('AppSidebar bandwidth entry', () => {
       /path: '\/admin\/ops', label: t\('nav\.ops'\)[^\n]*\n\s*\{ path: '\/admin\/bandwidth', label: t\('nav\.bandwidth'\), icon: BandwidthIcon, featureFlag: flagOpsMonitoring \}/
     )
   })
+
+  it('places traffic monitoring right below bandwidth with the same monitoring switch', () => {
+    expect(componentSource).toMatch(
+      /path: '\/admin\/bandwidth'[^\n]*\n\s*\{ path: '\/admin\/traffic', label: t\('nav\.traffic'\), icon: TrafficIcon, featureFlag: flagOpsMonitoring \}/
+    )
+  })
 })

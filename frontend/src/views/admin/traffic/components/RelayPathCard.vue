@@ -4,8 +4,8 @@
     data-testid="relay-path"
   >
     <header>
-      <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('bandwidth.relay.title') }}</h3>
-      <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('bandwidth.relay.subtitle') }}</p>
+      <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('traffic.relay.title') }}</h3>
+      <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('traffic.relay.subtitle') }}</p>
     </header>
 
     <!-- 宽屏：横向链路 -->
@@ -80,7 +80,7 @@
     </ol>
 
     <p class="mt-6 border-t border-gray-100 pt-4 text-xs leading-relaxed text-gray-500 dark:border-dark-700 dark:text-dark-400">
-      {{ t('bandwidth.relay.note') }}
+      {{ t('traffic.relay.note') }}
     </p>
   </section>
 </template>
@@ -91,7 +91,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { ServiceTrafficDirection, ServiceTrafficReport } from '@/api/admin/ops'
 import { formatByteCount, formatMbps } from '@/utils/trafficFormat'
-import { useBandwidthPalette } from '../useBandwidthPalette'
+import { useBandwidthPalette } from '@/views/admin/bandwidth/useBandwidthPalette'
 
 const props = defineProps<{ report: ServiceTrafficReport | null }>()
 
@@ -121,8 +121,8 @@ function bytesOf(key: ServiceTrafficDirection) {
 function peakOf(key: ServiceTrafficDirection) {
   const peak = props.report?.peaks?.[key]
   return peak
-    ? t('bandwidth.relay.peak', { value: formatMbps(peak.bytes_per_second) })
-    : t('bandwidth.relay.peakUnknown')
+    ? t('traffic.relay.peak', { value: formatMbps(peak.bytes_per_second) })
+    : t('traffic.relay.peakUnknown')
 }
 
 // 进入本站的箭头用入站色，离开本站的箭头用出站色，与走势图一致。
@@ -138,30 +138,30 @@ function flow(key: ServiceTrafficDirection, label: string, inbound: boolean, rev
 }
 
 const layout = computed<LayoutItem[]>(() => [
-  { kind: 'node', key: 'client', label: t('bandwidth.relay.client'), icon: 'users' },
+  { kind: 'node', key: 'client', label: t('traffic.relay.client'), icon: 'users' },
   {
     kind: 'hop',
     key: 'client-hop',
     flows: [
-      flow('client_in', t('bandwidth.relay.clientIn'), true, false),
-      flow('client_out', t('bandwidth.relay.clientOut'), false, true)
+      flow('client_in', t('traffic.relay.clientIn'), true, false),
+      flow('client_out', t('traffic.relay.clientOut'), false, true)
     ]
   },
-  { kind: 'node', key: 'site', label: t('bandwidth.relay.site'), icon: 'server', emphasis: true },
+  { kind: 'node', key: 'site', label: t('traffic.relay.site'), icon: 'server', emphasis: true },
   {
     kind: 'hop',
     key: 'upstream-hop',
     flows: [
-      flow('upstream_out', t('bandwidth.relay.upstreamOut'), false, false),
-      flow('upstream_in', t('bandwidth.relay.upstreamIn'), true, true)
+      flow('upstream_out', t('traffic.relay.upstreamOut'), false, false),
+      flow('upstream_in', t('traffic.relay.upstreamIn'), true, true)
     ]
   },
   {
     kind: 'node',
     key: 'upstream',
-    label: t('bandwidth.relay.upstream'),
+    label: t('traffic.relay.upstream'),
     icon: 'cloud',
-    note: t('bandwidth.relay.upstreamNote')
+    note: t('traffic.relay.upstreamNote')
   }
 ])
 </script>

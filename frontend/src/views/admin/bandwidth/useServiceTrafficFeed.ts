@@ -7,10 +7,10 @@ import {
   type ServiceTrafficReport,
   type ServiceTrafficResponse
 } from '@/api/admin/ops'
-import type { TrafficRange } from '@/api/admin/wireguard'
+import type { PresetRange } from '@/components/admin/traffic/usePresetRange'
 import { isMissingTime } from '@/utils/trafficFormat'
 
-export type PresetRange = Exclude<TrafficRange, 'custom'>
+export type { PresetRange } from '@/components/admin/traffic/usePresetRange'
 export type CurrentStatus = 'sampled' | 'warming_up' | 'invalid_interval' | 'stale' | 'unavailable'
 
 export interface LiveSample {
@@ -33,8 +33,14 @@ function statusOf(error: unknown) {
   return (error as { status?: number }).status
 }
 
-export function useServiceTrafficFeed(range: Ref<PresetRange>) {
+export interface ServiceTrafficFeedOptions {
+  // 流量页只看所选期间的累计，不需要每 2 秒的实时速率查询。
+  live?: boolean
+}
+
+export function useServiceTrafficFeed(range: Ref<PresetRange>, options: ServiceTrafficFeedOptions = {}) {
   const { t } = useI18n()
+  const liveEnabled = options.live ?? true
 
   const report = ref<ServiceTrafficReport | null>(null)
   const current = ref<ServiceTrafficCurrent | null>(null)
@@ -124,7 +130,7 @@ export function useServiceTrafficFeed(range: Ref<PresetRange>) {
   function scheduleLive() {
     if (liveTimer) clearTimeout(liveTimer)
     liveTimer = undefined
-    if (disposed || blocked.value) return
+    if (disposed || blocked.value || !liveEnabled) return
     liveTimer = setTimeout(() => {
       if (visibility.value === 'hidden') scheduleLive()
       else void pollLive()
@@ -166,7 +172,7 @@ export function useServiceTrafficFeed(range: Ref<PresetRange>) {
   }
 
   async function pollLive() {
-    if (disposed || blocked.value) return
+    if (disposed || blocked.value || !liveEnabled) return
     const seq = ++liveSeq
     liveController?.abort()
     const request = new AbortController()

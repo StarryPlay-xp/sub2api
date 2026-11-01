@@ -4,12 +4,10 @@ import { Bar, Line } from 'vue-chartjs'
 import BandwidthMeter from '../components/BandwidthMeter.vue'
 import HostBandwidthHero from '../components/HostBandwidthHero.vue'
 import PeakTrendChart from '../components/PeakTrendChart.vue'
-import RelayPathCard from '../components/RelayPathCard.vue'
-import TrafficOverview from '../components/TrafficOverview.vue'
 import WireGuardNodeCard from '../components/WireGuardNodeCard.vue'
 import { formatSampleTime } from '@/utils/trafficFormat'
 import type { Proxy } from '@/types'
-import { PEAK_AT, hostCurrent, hostReport, peak, wgDetails, wgReport } from './fixtures'
+import { PEAK_AT, hostCurrent, hostReport, wgDetails, wgReport } from './fixtures'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -159,81 +157,6 @@ describe('PeakTrendChart', () => {
     })
     expect(concurrent.get('[data-testid="trend-overlay"]').text()).toContain('bandwidth.trend.concurrent')
     expect(concurrent.findComponent(Bar).exists()).toBe(true)
-  })
-})
-
-describe('RelayPathCard', () => {
-  it('places each direction on its hop with traffic and peak', () => {
-    const wrapper = mount(RelayPathCard, { props: { report: hostReport() } })
-    expect(wrapper.get('[data-testid="relay-upstream_in"]').text()).toContain('1 GiB')
-    expect(wrapper.get('[data-testid="relay-upstream_in"]').text()).toContain('bandwidth.relay.peak(16.78 Mbps)')
-    expect(wrapper.get('[data-testid="relay-client_out"]').text()).toContain('512 MiB')
-  })
-
-  it('shows unknown peaks and dashes for empty periods', () => {
-    const wrapper = mount(RelayPathCard, {
-      props: { report: hostReport({ has_records: false, peaks: { client_in: peak(0) } }) }
-    })
-    expect(wrapper.get('[data-testid="relay-client_in"]').text()).toContain('—')
-    expect(wrapper.get('[data-testid="relay-client_in"]').text()).toContain('bandwidth.relay.peak(0 Mbps)')
-    expect(wrapper.get('[data-testid="relay-upstream_in"]').text()).toContain('bandwidth.relay.peakUnknown')
-  })
-})
-
-describe('TrafficOverview', () => {
-  function create(props: Record<string, unknown> = {}) {
-    return mount(TrafficOverview, {
-      props: { report: hostReport(), loading: false, ...props },
-      global: { stubs }
-    })
-  }
-
-  it('summarizes total, daily average and average bandwidth from the observed window', () => {
-    const wrapper = create()
-    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('1.5 GiB')
-    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain(
-      'bandwidth.traffic.inOut(1 GiB,512 MiB)'
-    )
-    expect(wrapper.get('[data-testid="traffic-daily"]').text()).toContain('1.5 GiB')
-    expect(wrapper.get('[data-testid="traffic-daily"]').text()).toContain(
-      'bandwidth.traffic.observed(bandwidth.traffic.observedHours(24))'
-    )
-    expect(wrapper.get('[data-testid="traffic-average"]').text()).toContain('0.149 Mbps')
-  })
-
-  it('shows the four directions with their share of total traffic', () => {
-    const wrapper = create()
-    expect(wrapper.get('[data-testid="traffic-client_out"]').text()).toContain('512 MiB')
-    expect(wrapper.get('[data-testid="traffic-client_out"]').text()).toContain('33.3%')
-    expect(wrapper.get('[data-testid="traffic-upstream_in"]').text()).toContain('1 GiB')
-    expect(wrapper.get('[data-testid="traffic-upstream_in"]').text()).toContain('66.6%')
-  })
-
-  it('stacks inbound and outbound traffic on a shared time axis', () => {
-    const wrapper = create()
-    const data = wrapper.findComponent(Bar).props('data') as {
-      datasets: { data: { y: number | null }[] }[]
-    }
-    expect(data.datasets).toHaveLength(2)
-    expect(data.datasets[0].data.some((point) => point.y !== null)).toBe(true)
-    expect(data.datasets[0].data.some((point) => point.y === null)).toBe(true)
-  })
-
-  it('keeps values unknown and explains empty periods', () => {
-    const wrapper = create({ report: hostReport({ has_records: false, history: [] }) })
-    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('—')
-    expect(wrapper.get('[data-testid="traffic-daily"]').text()).toContain('—')
-    expect(wrapper.get('[data-testid="traffic-average"]').text()).toContain('—')
-    expect(wrapper.get('[data-testid="traffic-chart-empty"]').text()).toContain(
-      'bandwidth.traffic.noRecords'
-    )
-    expect(wrapper.findComponent(Bar).exists()).toBe(false)
-  })
-
-  it('shows a skeleton until the first report arrives', () => {
-    const wrapper = create({ report: null, loading: true })
-    expect(wrapper.find('[data-testid="traffic-skeleton"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="traffic-total"]').exists()).toBe(false)
   })
 })
 

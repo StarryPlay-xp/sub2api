@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import BandwidthView from '../BandwidthView.vue'
 import { getBandwidthLimits, saveBandwidthLimit } from '@/api/admin/bandwidth'
 import { hostResponse, wgDetails, wgReport } from './fixtures'
+import { liveData, rankingData } from '@/components/admin/traffic/__tests__/fixtures'
 
 vi.mock('@/api/admin/bandwidth', () => ({ getBandwidthLimits: vi.fn(), saveBandwidthLimit: vi.fn() }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn(), showInfo: vi.fn() }) }))
@@ -13,6 +14,14 @@ const mockDetails = vi.fn()
 const mockTraffic = vi.fn()
 const mockReplace = vi.fn()
 const routeState = { query: {} as Record<string, string> }
+
+const mockRanking = vi.fn()
+const mockLive = vi.fn()
+vi.mock('@/api/admin/trafficSubjects', () => ({
+  getTrafficRanking: (...args: unknown[]) => mockRanking(...args),
+  getTrafficLive: (...args: unknown[]) => mockLive(...args),
+  getTrafficSubject: vi.fn()
+}))
 
 vi.mock('@/api/admin/ops', () => ({
   opsAPI: { getServiceTraffic: (...args: unknown[]) => mockGetServiceTraffic(...args) }
@@ -61,7 +70,8 @@ function create() {
     global: {
       stubs: {
         HelpTooltip: true,
-        RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
+        RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+        BaseDialog: { props: ['show', 'title'], template: '<div v-if="show"><slot /></div>' }
       }
     }
   })
@@ -74,6 +84,8 @@ beforeEach(() => {
   vi.mocked(getBandwidthLimits).mockResolvedValue({ host: { mbps: null, version: '' }, nodes: {} })
   vi.mocked(saveBandwidthLimit).mockImplementation(async (_id, value) => ({ ...value, version: 'saved' }))
   mockGetServiceTraffic.mockResolvedValue(hostResponse())
+  mockRanking.mockResolvedValue(rankingData())
+  mockLive.mockResolvedValue(liveData())
   mockListProxies.mockResolvedValue({ items: [proxy(11, 'Tokyo relay'), proxy(12, 'Legacy node')], total: 2, page: 1, page_size: 100, pages: 1 })
   mockDetails.mockResolvedValue(wgDetails())
   mockTraffic.mockImplementation((id: number) =>
@@ -105,7 +117,6 @@ describe('BandwidthView', () => {
       [12, { range: '24h' }]
     ])
     expect(wrapper.get('[data-testid="host-peak"]').text()).toContain('16.78')
-    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('1.5 GiB')
     expect(wrapper.get('[data-testid="wg-node-11"]').text()).toContain('33.55')
     expect(wrapper.get('[data-testid="wg-node-12"]').text()).toContain('bandwidth.nodes.legacy')
     expect(wrapper.get('[data-testid="range-text"]').text()).toContain('bandwidth.perMinute')
@@ -123,6 +134,34 @@ describe('BandwidthView', () => {
     expect(mockReplace).toHaveBeenCalledWith({ query: { range: '7d' } })
     expect(mockGetServiceTraffic.mock.calls.some((call) => call[0].range === '7d')).toBe(true)
     expect(mockTraffic.mock.calls.filter((call) => call[1].range === '7d').map((call) => call[0])).toEqual([11, 12])
+    wrapper.unmount()
+  })
+
+  it('ranks users by peak bandwidth against the shared host limit and shows live usage', async () => {
+    vi.mocked(getBandwidthLimits).mockResolvedValue({ host: { mbps: 20, version: '1' }, nodes: {} })
+    const wrapper = create()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="traffic-overview"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="relay-path"]').exists()).toBe(false)
+    expect(mockRanking.mock.calls[0][0]).toMatchObject({ range: '24h', subject: 'user', sort: 'peak_total' })
+    expect(mockLive.mock.calls[0][0]).toMatchObject({ subject: 'user' })
+    // 入站峰值 16.78 Mbps 占 20 Mbps 上限 84%
+    expect(wrapper.get('[data-testid="ranking-row-user:7"] [data-testid="cell-usage"]').text()).toContain('84%')
+    expect(wrapper.get('[data-testid="live-row-user:7"]').text()).toContain('3.6 Mbps')
+
+    await wrapper.findAll('button').find((button) => button.text() === 'bandwidth.range.7d')!.trigger('click')
+    await flushPromises()
+    expect(mockRanking.mock.calls.at(-1)?.[0]).toMatchObject({ range: '7d', page: 1 })
+    wrapper.unmount()
+  })
+
+  it('opens subject details from the ranking', async () => {
+    const wrapper = create()
+    await flushPromises()
+    await wrapper.get('[data-testid="ranking-row-user:7"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="subject-detail"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
