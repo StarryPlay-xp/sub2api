@@ -1,0 +1,188 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import BandwidthView from '../BandwidthView.vue'
+import { BANDWIDTH_LIMITS_KEY } from '../useBandwidthLimits'
+import { hostResponse, wgDetails, wgReport } from './fixtures'
+
+const mockGetServiceTraffic = vi.fn()
+const mockListProxies = vi.fn()
+const mockDetails = vi.fn()
+const mockTraffic = vi.fn()
+const mockReplace = vi.fn()
+const routeState = { query: {} as Record<string, string> }
+
+vi.mock('@/api/admin/ops', () => ({
+  opsAPI: { getServiceTraffic: (...args: unknown[]) => mockGetServiceTraffic(...args) }
+}))
+
+vi.mock('@/api/admin/proxies', () => ({
+  proxiesAPI: { list: (...args: unknown[]) => mockListProxies(...args) }
+}))
+
+vi.mock('@/api/admin/wireguard', () => ({
+  details: (...args: unknown[]) => mockDetails(...args),
+  traffic: (...args: unknown[]) => mockTraffic(...args)
+}))
+
+vi.mock('@/components/layout/AppLayout.vue', () => ({
+  default: { template: '<div><slot /></div>' }
+}))
+
+// 详情弹窗沿用 IP 管理页的现有组件，这里只验证打开了哪个节点。
+vi.mock('@/components/admin/proxy/WireGuardDialog.vue', () => ({
+  default: { props: ['nodeId'], template: '<div data-testid="wg-dialog">{{ nodeId }}</div>' }
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => routeState,
+  useRouter: () => ({ replace: mockReplace })
+}))
+
+vi.mock('vue-i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-i18n')>()),
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) =>
+      params ? `${key}(${Object.values(params).join(',')})` : key
+  })
+}))
+
+vi.mock('vue-chartjs', () => ({
+  Line: { props: ['data', 'options', 'plugins'], template: '<div data-testid="line-chart" />' },
+  Bar: { props: ['data', 'options', 'plugins'], template: '<div data-testid="bar-chart" />' }
+}))
+
+const proxy = (id: number, name: string) => ({ id, name, protocol: 'wireguard' })
+
+function create() {
+  return mount(BandwidthView, {
+    global: {
+      stubs: {
+        HelpTooltip: true,
+        RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
+      }
+    }
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  localStorage.clear()
+  routeState.query = {}
+  mockGetServiceTraffic.mockResolvedValue(hostResponse())
+  mockListProxies.mockResolvedValue({ items: [proxy(11, 'Tokyo relay'), proxy(12, 'Legacy node')], total: 2, page: 1, page_size: 100, pages: 1 })
+  mockDetails.mockResolvedValue(wgDetails())
+  mockTraffic.mockImplementation((id: number) =>
+    Promise.resolve(id === 12 ? wgReport({ peak_history: null }) : wgReport())
+  )
+})
+
+describe('BandwidthView', () => {
+  it('loads host traffic and every WireGuard node for the same range', async () => {
+    const wrapper = create()
+    await flushPromises()
+
+    expect(mockGetServiceTraffic.mock.calls[0][0]).toEqual({ range: '24h' })
+    expect(mockListProxies).toHaveBeenCalledWith(1, 100, { protocol: 'wireguard' }, expect.anything())
+    expect(mockTraffic.mock.calls.map((call) => [call[0], call[1]])).toEqual([
+      [11, { range: '24h' }],
+      [12, { range: '24h' }]
+    ])
+    expect(wrapper.get('[data-testid="host-peak"]').text()).toContain('16.78')
+    expect(wrapper.get('[data-testid="wg-node-11"]').text()).toContain('33.55')
+    expect(wrapper.get('[data-testid="wg-node-12"]').text()).toContain('bandwidth.nodes.legacy')
+    expect(wrapper.get('[data-testid="range-text"]').text()).toContain('bandwidth.perMinute')
+    wrapper.unmount()
+  })
+
+  it('switches every section to the new range and keeps it in the address', async () => {
+    const wrapper = create()
+    await flushPromises()
+    mockGetServiceTraffic.mockResolvedValue(hostResponse({ range: '7d', interval: 'hour' }))
+
+    await wrapper.findAll('button').find((button) => button.text() === 'bandwidth.range.7d')!.trigger('click')
+    await flushPromises()
+
+    expect(mockReplace).toHaveBeenCalledWith({ query: { range: '7d' } })
+    expect(mockGetServiceTraffic.mock.calls.some((call) => call[0].range === '7d')).toBe(true)
+    expect(mockTraffic.mock.calls.filter((call) => call[1].range === '7d').map((call) => call[0])).toEqual([11, 12])
+    wrapper.unmount()
+  })
+
+  it('reads the initial range from the address', async () => {
+    routeState.query = { range: '30d' }
+    const wrapper = create()
+    await flushPromises()
+    expect(mockGetServiceTraffic.mock.calls[0][0]).toEqual({ range: '30d' })
+    wrapper.unmount()
+  })
+
+  it('collects data quality warnings at the top', async () => {
+    mockGetServiceTraffic.mockResolvedValue(
+      hostResponse(
+        {
+          incomplete: true,
+          concurrent_runtimes: true,
+          quality: { first_sample_at: '2026-10-31T20:00:00Z', last_sample_at: '2026-11-01T02:59:59Z', valid_samples: 10, invalid_samples: 2 }
+        },
+        {},
+        { persistence_error: true }
+      )
+    )
+    const wrapper = create()
+    await flushPromises()
+    const warnings = wrapper.get('[data-testid="host-warnings"]').text()
+    expect(warnings).toContain('bandwidth.warnings.concurrent')
+    expect(warnings).toContain('bandwidth.warnings.incomplete')
+    expect(warnings).toContain('bandwidth.warnings.invalidSamples(2)')
+    expect(warnings).toContain('bandwidth.warnings.partialCoverage')
+    expect(warnings).toContain('bandwidth.warnings.persistenceError')
+    wrapper.unmount()
+  })
+
+  it('saves a host bandwidth limit in this browser and shows the headroom', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const hero = wrapper.get('[data-testid="host-hero"]')
+    await hero.findAll('button').find((button) => button.text() === 'bandwidth.limit.set')!.trigger('click')
+    await hero.get('input').setValue('20')
+    await hero.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem(BANDWIDTH_LIMITS_KEY) || '{}').host).toBe(20)
+    expect(wrapper.get('[data-testid="host-hero"]').text()).toContain('bandwidth.limit.usage(84%)')
+    expect(wrapper.get('[data-testid="host-hero"]').text()).toContain('bandwidth.limit.levelWarning')
+    wrapper.unmount()
+  })
+
+  it('opens the existing WireGuard dialog for node details', async () => {
+    const wrapper = create()
+    await flushPromises()
+    await wrapper.get('[data-testid="wg-node-11"]').findAll('button').find((button) => button.text() === 'bandwidth.nodes.details')!.trigger('click')
+    expect(wrapper.get('[data-testid="wg-dialog"]').text()).toBe('11')
+    wrapper.unmount()
+  })
+
+  it('shows an empty state without WireGuard nodes and keeps host data when nodes are forbidden', async () => {
+    mockListProxies.mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 100, pages: 0 })
+    const empty = create()
+    await flushPromises()
+    expect(empty.find('[data-testid="wg-empty"]').exists()).toBe(true)
+    empty.unmount()
+
+    mockListProxies.mockRejectedValueOnce({ status: 403 })
+    const forbidden = create()
+    await flushPromises()
+    expect(forbidden.get('[data-testid="wg-nodes"]').text()).toContain('bandwidth.nodes.forbidden')
+    expect(forbidden.get('[data-testid="host-peak"]').text()).toContain('16.78')
+    forbidden.unmount()
+  })
+
+  it('keeps WireGuard nodes visible when host traffic is unavailable', async () => {
+    mockGetServiceTraffic.mockRejectedValue({ status: 404, code: 'OPS_DISABLED' })
+    const wrapper = create()
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('bandwidth.errors.disabled')
+    expect(wrapper.find('[data-testid="wg-node-11"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})

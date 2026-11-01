@@ -1,4 +1,5 @@
 import wireguard from './wireguard'
+import bandwidth from './bandwidth'
 import adminAccessKeys from './adminAccessKeys'
 import mcp from './mcp'
 import landing from './landing'
@@ -11,6 +12,7 @@ import misc from './misc'
 
 export default {
   wireguard,
+  bandwidth,
   adminAccessKeys,
   mcp,
   ...landing,

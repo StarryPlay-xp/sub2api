@@ -47,7 +47,7 @@ export function floorLocal(time: number, step: number): number {
 }
 
 // 本地对齐落不到存储粒度上（如 UTC+05:30 的整小时）时退回 UTC 对齐，避免一个桶被拆到两柱。
-function alignBinStart(time: number, size: number, grain: number): number {
+export function alignBinStart(time: number, size: number, grain: number): number {
   const local = floorLocal(time, size)
   return local % grain === 0 ? local : Math.floor(time / size) * size
 }

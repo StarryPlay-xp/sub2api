@@ -450,6 +450,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/bandwidth',
+    name: 'AdminBandwidth',
+    component: () => import('@/views/admin/bandwidth/BandwidthView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Bandwidth',
+      titleKey: 'bandwidth.title',
+      descriptionKey: 'bandwidth.description'
+    }
+  },
+  {
     path: '/admin/audit-logs',
     name: 'AdminAuditLogs',
     component: () => import('@/views/admin/AuditLogView.vue'),

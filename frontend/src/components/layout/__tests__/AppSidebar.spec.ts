@@ -90,3 +90,11 @@ describe('AppSidebar MCP entry', () => {
     expect(componentSource).not.toMatch(/path: '\/settings\/mcp'[^\n]*PluginIcon/)
   })
 })
+
+describe('AppSidebar bandwidth entry', () => {
+  it('sits right below ops monitoring and follows the same monitoring switch', () => {
+    expect(componentSource).toMatch(
+      /path: '\/admin\/ops', label: t\('nav\.ops'\)[^\n]*\n\s*\{ path: '\/admin\/bandwidth', label: t\('nav\.bandwidth'\), icon: BandwidthIcon, featureFlag: flagOpsMonitoring \}/
+    )
+  })
+})
