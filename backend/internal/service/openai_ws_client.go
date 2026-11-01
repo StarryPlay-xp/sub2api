@@ -126,7 +126,21 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
 
-	wrapped := &coderOpenAIWSClientConn{trafficMeter: traffic.FromContext(ctx)}
+	var ownedTraffic *traffic.Meter
+	if route := egress.FromContext(ctx); route != nil && traffic.FromContext(ctx) != nil && !traffic.FromContext(ctx).HasEgress(route.TrafficIdentity()) {
+		if err := route.Check(ctx); err != nil {
+			return nil, 0, nil, err
+		}
+		ownedTraffic = traffic.FromContext(ctx).EgressScope(route.TrafficIdentity())
+		ctx = traffic.WithMeter(ctx, ownedTraffic)
+	}
+	success := false
+	defer func() {
+		if !success {
+			ownedTraffic.CloseEgress()
+		}
+	}()
+	wrapped := &coderOpenAIWSClientConn{trafficMeter: traffic.FromContext(ctx), ownedTraffic: ownedTraffic}
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { wrapped.remote = info.Conn.RemoteAddr() }})
 	opts := &coderws.DialOptions{
 		HTTPHeader:      cloneHeader(headers),
@@ -184,6 +198,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	if resp != nil {
 		respHeaders = cloneHeader(resp.Header)
 	}
+	success = true
 	wrapped.conn = conn
 	return wrapped, 0, respHeaders, nil
 }
@@ -311,6 +326,7 @@ func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransport
 }
 
 type coderOpenAIWSClientConn struct {
+	ownedTraffic  *traffic.Meter
 	trafficMeter  *traffic.Meter
 	remote        net.Addr
 	conn          *coderws.Conn
@@ -407,6 +423,7 @@ func (c *coderOpenAIWSClientConn) Close() error {
 	if c == nil || c.conn == nil {
 		return nil
 	}
+	defer c.ownedTraffic.CloseEgress()
 	// Close 为幂等，忽略重复关闭错误。
 	_ = c.conn.Close(coderws.StatusNormalClosure, "")
 	_ = c.conn.CloseNow()
@@ -414,6 +431,9 @@ func (c *coderOpenAIWSClientConn) Close() error {
 }
 
 func (c *coderOpenAIWSClientConn) CloseNow() error {
+	if c != nil {
+		defer c.ownedTraffic.CloseEgress()
+	}
 	if c == nil || c.conn == nil {
 		return nil
 	}

@@ -201,6 +201,8 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/traffic-ranking", h.Admin.Ops.GetTrafficRanking)
 		ops.GET("/traffic-subjects/:type/:id", h.Admin.Ops.GetTrafficSubject)
 		ops.GET("/traffic-live", h.Admin.Ops.GetTrafficLive)
+		ops.GET("/traffic-egress", h.Admin.Ops.GetTrafficEgress)
+		ops.GET("/traffic-egress/:route_type/:route_id", h.Admin.Ops.GetTrafficEgressDetail)
 		ops.GET("/bandwidth-limits", h.Admin.Ops.GetBandwidthLimits)
 		ops.PUT("/bandwidth-limits/host", h.Admin.Ops.UpdateBandwidthLimit)
 		ops.PUT("/bandwidth-limits/nodes/:id", h.Admin.Ops.UpdateBandwidthLimit)

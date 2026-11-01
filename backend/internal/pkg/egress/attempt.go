@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 )
 
 type Attempt struct {
@@ -87,7 +87,7 @@ func (r *Recorder) Close() {
 	r.cancel()
 }
 func (r *Route) observeRoundTrip(request *http.Request, next http.RoundTripper) (*http.Response, error) {
-	next = traffic.Transport(next)
+	next = traffic.EgressTransport(next, r.TrafficIdentity())
 	observer, recorder := r.router.observer, r.router.recorder
 	if observer == nil || recorder == nil {
 		return next.RoundTrip(request)
@@ -186,4 +186,9 @@ func (r *Route) RecordConnectionAttempt(ctx context.Context, remote net.Addr, re
 	}
 	r.router.observer.Watch(r)
 	r.router.recorder.Record(Attempt{ID: hex.EncodeToString(id[:]), RequestID: requestID, CorrelationIDs: aliases, AccountID: r.AccountID(), RouteKey: r.EvidenceKey(), StartedAt: time.Now(), FinishedAt: time.Now(), Snapshot: r.router.observer.Snapshot(r, remote, reused), Outcome: outcome})
+}
+
+// TrafficIdentity is deliberately restricted to IDs and the route kind.
+func (r *Route) TrafficIdentity() traffic.EgressIdentity {
+	return traffic.EgressIdentity{Type: string(r.Kind()), ID: r.NodeID(), AccountID: r.AccountID()}
 }

@@ -185,12 +185,16 @@ func (m *Meter) sampleSubjects(now time.Time, seconds float64, valid bool) Bytes
 		requests uint64
 		flight   int64
 	}
+	extra, egressDeltas := m.sampleEgressCounters(now)
+	var unidentified EgressBytes
 	deltas := map[Subject]delta{}
 	var host Bytes
 	sample := func(c *subjectCounter) {
 		counts := Bytes{c.bytes[0].Load(), c.bytes[1].Load(), c.bytes[2].Load(), c.bytes[3].Load()}
 		b := counts.Sub(c.previous)
 		c.previous = counts
+		unidentified.Add(EgressBytes{b.UpstreamOut, b.UpstreamIn})
+		b.Add(extra[c])
 		requests := c.requests.Load()
 		n := requests - c.previousRequests
 		c.previousRequests = requests
@@ -269,6 +273,7 @@ func (m *Meter) sampleSubjects(now time.Time, seconds float64, valid bool) Bytes
 			m.incomplete = true
 		}
 	}
+	m.observeEgress(now, seconds, valid, egressDeltas, unidentified)
 	m.overflow = false
 	return host
 }

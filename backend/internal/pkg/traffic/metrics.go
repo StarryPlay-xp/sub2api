@@ -125,29 +125,42 @@ type Snapshot struct {
 	Incomplete bool
 	Buckets    []Bucket
 	Subjects   []SubjectBucket
+	Egress     []EgressBucket
 }
 
 type Meter struct {
-	root                  *Meter
-	target                atomic.Pointer[subjectCounter]
-	source                atomic.Pointer[Meter]
-	bound, ended, request bool
-	overflowed            bool
-	overflowScopes        int
-	unattributed          *subjectCounter
-	subjects              map[Subject]*subjectCounter
-	subjectBuckets        map[subjectBucketKey]SubjectBucket
-	subjectLive           map[Subject]SubjectCurrent
-	hostLive              SubjectCurrent
-	subjectLimit          int
-	overflow              bool
-	mu                    sync.Mutex
-	runtimeID             string
-	started, last         time.Time
-	seq                   uint64
-	incomplete            bool
-	buckets               map[string]Bucket
-	current               Current
+	egress                         *egressCounter
+	egressIdentity                 *EgressIdentity
+	egressFallback                 *subjectCounter
+	egressClosed, egressOverflowed bool
+	egressCounters                 map[egressLeafKey]*egressCounter
+	egressCombinations             map[EgressIdentity]int
+	egressRoutes                   map[EgressIdentity]int
+	egressBuckets                  map[egressBucketKey]EgressBucket
+	egressLimit                    int
+	egressOverflow                 bool
+	egressOverflowScopes           int
+	egressUnidentifiedAttempts     uint64
+	root                           *Meter
+	target                         atomic.Pointer[subjectCounter]
+	source                         atomic.Pointer[Meter]
+	bound, ended, request          bool
+	overflowed                     bool
+	overflowScopes                 int
+	unattributed                   *subjectCounter
+	subjects                       map[Subject]*subjectCounter
+	subjectBuckets                 map[subjectBucketKey]SubjectBucket
+	subjectLive                    map[Subject]SubjectCurrent
+	hostLive                       SubjectCurrent
+	subjectLimit                   int
+	overflow                       bool
+	mu                             sync.Mutex
+	runtimeID                      string
+	started, last                  time.Time
+	seq                            uint64
+	incomplete                     bool
+	buckets                        map[string]Bucket
+	current                        Current
 }
 
 func NewMeter(id string, now time.Time) *Meter {
@@ -157,6 +170,10 @@ func (m *Meter) Add(direction, n int) {
 	if m != nil && direction >= 0 && direction < 4 && n > 0 {
 		if source := m.source.Load(); source != nil {
 			source.Add(direction, n)
+			return
+		}
+		if direction >= UpstreamOut && m.egress != nil {
+			m.egress.bytes[direction-UpstreamOut].Add(uint64(n))
 			return
 		}
 		c := m.target.Load()
@@ -241,11 +258,28 @@ func (m *Meter) Snapshot(closed bool) Snapshot {
 		b.Peaks = b.Peaks.Clone()
 		s.Subjects = append(s.Subjects, b)
 	}
+	for _, b := range m.egressBuckets {
+		if b.Sequence > b.savedSequence {
+			b.Peaks = b.Peaks.Clone()
+			s.Egress = append(s.Egress, b)
+		}
+	}
 	return s
 }
 func (m *Meter) Ack(s Snapshot) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, b := range s.Egress {
+		key := egressBucketKey{b.EgressIdentity, b.Start}
+		if current, ok := m.egressBuckets[key]; ok {
+			if current.Sequence == b.Sequence && b.Start.Before(m.last.UTC().Truncate(time.Hour)) {
+				delete(m.egressBuckets, key)
+			} else if b.Sequence > current.savedSequence {
+				current.savedSequence = b.Sequence
+				m.egressBuckets[key] = current
+			}
+		}
+	}
 	for _, b := range s.Subjects {
 		key := subjectBucketKey{b.Subject, b.Start}
 		if current, ok := m.subjectBuckets[key]; ok {

@@ -84,6 +84,13 @@ func wireguardTestDBVersion(t *testing.T, upgraded bool) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
+	egressMigration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "255_service_traffic_egress.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = isolated.Exec(string(egressMigration)); err != nil {
+		t.Fatal(err)
+	}
 	if upgraded {
 		applyWireGuardLifecycleMigration(t, isolated)
 	}

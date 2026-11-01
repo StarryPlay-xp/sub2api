@@ -20,7 +20,7 @@ func ProvideServiceTraffic(db *sql.DB, gateway *service.OpenAIGatewayService) *s
 	store := &ServiceTrafficStore{DB: db}
 	collector := traffic.NewCollector(store)
 	gateway.SetTrafficMeter(collector.Meter)
-	return &service.ServiceTrafficService{Collector: collector, Store: store, Subjects: store, Limits: &BandwidthLimitStore{DB: db}}
+	return &service.ServiceTrafficService{Collector: collector, Store: store, Subjects: store, Egress: store, Limits: &BandwidthLimitStore{DB: db}}
 }
 func (s *ServiceTrafficStore) Save(ctx context.Context, c traffic.Snapshot) error {
 	if c.RuntimeID == "" || c.StartedAt.IsZero() || c.At.Before(c.StartedAt) {
@@ -57,6 +57,9 @@ func (s *ServiceTrafficStore) Save(ctx context.Context, c traffic.Snapshot) erro
 	if err = saveTrafficSubjects(ctx, tx, c); err != nil {
 		return err
 	}
+	if err = saveTrafficEgress(ctx, tx, c); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 func (s *ServiceTrafficStore) Prune(ctx context.Context, now time.Time) error {
@@ -65,6 +68,10 @@ func (s *ServiceTrafficStore) Prune(ctx context.Context, now time.Time) error {
 		return err
 	}
 	_, err = s.DB.ExecContext(ctx, `DELETE FROM service_traffic_subject_buckets WHERE bucket_start<$1`, now.Add(-90*24*time.Hour).UTC().Truncate(time.Hour))
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `DELETE FROM service_traffic_egress_buckets WHERE bucket_start<$1`, now.Add(-90*24*time.Hour).UTC().Truncate(time.Hour))
 	if err != nil {
 		return err
 	}

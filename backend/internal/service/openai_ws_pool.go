@@ -100,15 +100,16 @@ type openAIWSHandshakeCompatibilityKey struct {
 }
 
 type openAIWSConnLease struct {
-	pool       *openAIWSConnPool
-	accountID  int64
-	conn       *openAIWSConn
-	queueWait  time.Duration
-	connPick   time.Duration
-	idleBefore time.Duration
-	ageBefore  time.Duration
-	reused     bool
-	released   atomic.Bool
+	trafficScope *traffic.Meter
+	pool         *openAIWSConnPool
+	accountID    int64
+	conn         *openAIWSConn
+	queueWait    time.Duration
+	connPick     time.Duration
+	idleBefore   time.Duration
+	ageBefore    time.Duration
+	reused       bool
+	released     atomic.Bool
 }
 
 func (l *openAIWSConnLease) activeConn() (*openAIWSConn, error) {
@@ -278,7 +279,8 @@ func (l *openAIWSConnLease) Release() {
 	if !l.released.CompareAndSwap(false, true) {
 		return
 	}
-	l.conn.trafficMeter.SetSource(nil)
+	l.conn.trafficMeter.SetSource(l.conn.idleTrafficMeter)
+	l.trafficScope.CloseEgress()
 	l.conn.release()
 	if l.pool != nil {
 		l.pool.notifyAccountPoolChanged(l.accountID)
@@ -286,9 +288,10 @@ func (l *openAIWSConnLease) Release() {
 }
 
 type openAIWSConn struct {
-	trafficMeter *traffic.Meter
-	id           string
-	ws           openAIWSClientConn
+	trafficMeter     *traffic.Meter
+	idleTrafficMeter *traffic.Meter
+	id               string
+	ws               openAIWSClientConn
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -319,8 +322,15 @@ type openAIWSConn struct {
 }
 
 func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders http.Header) *openAIWSConn {
+	return newOpenAIWSConnWithTraffic(id, ws, handshakeHeaders, nil, nil)
+}
+
+// Initialize ownership before starting the reader: a peer may close immediately.
+func newOpenAIWSConnWithTraffic(id string, ws openAIWSClientConn, handshakeHeaders http.Header, meter, idle *traffic.Meter) *openAIWSConn {
 	now := time.Now()
 	conn := &openAIWSConn{
+		trafficMeter:     meter,
+		idleTrafficMeter: idle,
 		id:               id,
 		ws:               ws,
 		handshakeHeaders: cloneHeader(handshakeHeaders),
@@ -558,6 +568,7 @@ func (c *openAIWSConn) closeWith(force bool) {
 		return
 	}
 	c.closeOnce.Do(func() {
+		defer c.idleTrafficMeter.CloseEgress()
 		close(c.closedCh)
 		if c.ws != nil {
 			if forceCloser, ok := c.ws.(openAIWSForceCloser); ok && force {
@@ -1127,8 +1138,19 @@ func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireReque
 	if p != nil {
 		p.metrics.acquireTotal.Add(1)
 	}
+	var trafficScope *traffic.Meter
+	if req.Route != nil {
+		trafficScope = req.TrafficMeter.EgressScope(req.Route.TrafficIdentity())
+		req.TrafficMeter = trafficScope
+		ctx = traffic.WithMeter(ctx, trafficScope)
+	}
 	queueWait := &openAIWSAcquireQueueWait{}
 	lease, err := p.acquire(ctx, cloneOpenAIWSAcquireRequest(req), 0, queueWait)
+	if lease != nil {
+		lease.trafficScope = trafficScope
+	} else {
+		trafficScope.CloseEgress()
+	}
 	if lease != nil && queueWait.rewoken {
 		// 广播重选经 tryAcquire 拿令牌，不像排队分支那样在取得令牌后检查取消，
 		// 这里补上复查：上下文已取消就归还令牌并按取消返回。
@@ -2151,17 +2173,22 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 }
 
 func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConn, error) {
-	if req.TrafficMeter != nil {
-		ctx = traffic.WithMeter(ctx, req.TrafficMeter.Switch())
-	}
-	if p == nil || p.clientDialer == nil {
-		return nil, errors.New("openai ws client dialer is nil")
-	}
 	if req.Route != nil {
 		if err := req.Route.Check(ctx); err != nil {
 			return nil, err
 		}
 		ctx = egress.WithRoute(ctx, req.Route)
+	}
+	if req.Route != nil && req.TrafficMeter != nil && !req.TrafficMeter.HasEgress(req.Route.TrafficIdentity()) {
+		scope := req.TrafficMeter.EgressScope(req.Route.TrafficIdentity())
+		defer scope.CloseEgress()
+		req.TrafficMeter = scope
+	}
+	if req.TrafficMeter != nil {
+		ctx = traffic.WithMeter(ctx, req.TrafficMeter.Switch())
+	}
+	if p == nil || p.clientDialer == nil {
+		return nil, errors.New("openai ws client dialer is nil")
 	}
 	headers := cloneHeader(req.Headers)
 	var err error
@@ -2193,8 +2220,15 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 		}
 	}
 	id := p.nextConnID(req.Account.ID)
-	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
-	pooledConn.trafficMeter = traffic.FromContext(ctx)
+	meter := traffic.FromContext(ctx)
+	var idle *traffic.Meter
+	// Idle messages stay assigned to the physical route but to no platform user.
+	// A separate scope is created only while the pool owns the connection.
+	if req.Route != nil {
+		idle = req.TrafficMeter.Root().EgressIdleScope(req.Route.TrafficIdentity())
+		meter.SetSource(idle)
+	}
+	pooledConn := newOpenAIWSConnWithTraffic(id, conn, handshakeHeaders, meter, idle)
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)

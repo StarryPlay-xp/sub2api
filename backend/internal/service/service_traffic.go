@@ -16,6 +16,7 @@ type ServiceTrafficService struct {
 	Store         ServiceTrafficRepository
 	Limits        BandwidthLimitRepository
 	Subjects      TrafficSubjectRepository
+	Egress        TrafficEgressRepository
 	identityCache trafficIdentityCache
 }
 
