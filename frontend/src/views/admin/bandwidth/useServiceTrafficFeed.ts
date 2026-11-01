@@ -193,6 +193,7 @@ export function useServiceTrafficFeed(range: Ref<PresetRange>) {
   }
 
   const currentStatus = computed<CurrentStatus>(() => {
+    if (blocked.value) return 'unavailable'
     const value = current.value
     if (!value) return 'unavailable'
     if (value.state === 'warming_up' || isMissingTime(value.sampled_at)) return 'warming_up'

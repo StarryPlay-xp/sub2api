@@ -24,7 +24,7 @@ export default {
   warnings: {
     concurrent: 'Several processes wrote to the same database at the same time. Their peaks cannot be merged into an overall peak and are hidden; traffic totals are still the sum of all processes.',
     incomplete: 'Records may be incomplete: there may be invalid samples, an old process that did not shut down cleanly, lost unsaved detail, or overlapping instances.',
-    invalidSamples: '{count} sample windows deviated from 1 second (0.5–1.5s allowed). Their bytes count toward traffic but are excluded from peaks.',
+    invalidSamples: '{count} samples were startup/shutdown fragments or deviated from 1 second (regular ticks allow 0.9–1.1s). Their bytes count toward traffic but are excluded from peaks.',
     partialCoverage: 'Observations start at {time}; earlier parts of the selected period have no records, so peaks do not represent the whole period.',
     noRecords: 'No saved records for the selected period. This does not mean there was no traffic.',
     persistenceError: 'The latest save failed, so history may lag behind. Live rates are unaffected.'

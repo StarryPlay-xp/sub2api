@@ -31,7 +31,7 @@ export default {
   peakLegacyHint: 'Records in this period predate the upgrade and have no peak data; totals are unaffected.',
   peakBasis: 'Peaks are ~1-second window averages. The total peak is the highest sent + received sum within a single sample, not the two peaks added together. Millisecond bursts are not visible; the time is when the sample ended.',
   peakPartial: 'Peaks only cover samples from {time}; earlier records predate the upgrade or lack samples and have no peak data.',
-  invalidSamples: '{count} sample windows deviated from 1 second (0.5–1.5s allowed). Their bytes are counted in totals but excluded from peaks.',
+  invalidSamples: '{count} samples were startup/shutdown fragments or deviated from 1 second (regular ticks allow 0.9–1.1s). Their bytes are counted in totals but excluded from peaks.',
   rateDelayed: 'Sampling delayed', rateWarmingUp: 'Waiting for sample',
   nodeBandwidthPeak: 'Node bandwidth peak (1-second average · sent + received)',
   nodeBandwidthPeakHint: 'A self-hosted VPS relay forwards what this site sends to the upstream and relays the upstream replies back, so each direction of the node carries roughly sent + received. This shows the highest sent + received sum within a single sample (not the two peaks added together), for comparison with the node bandwidth limit. Commercial VPNs usually limit upload and download separately; use the sent and received peaks below instead. Values are encrypted UDP payload without outer headers.'

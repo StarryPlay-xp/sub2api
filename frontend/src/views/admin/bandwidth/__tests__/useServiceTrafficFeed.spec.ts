@@ -42,6 +42,19 @@ afterEach(() => {
 })
 
 describe('useServiceTrafficFeed', () => {
+  it('invalidates the displayed live rate when monitoring becomes inaccessible', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    mockGetServiceTraffic.mockResolvedValueOnce(hostResponse()).mockRejectedValue({ status: 403 })
+    const { wrapper, feed } = setup()
+    await flushPromises()
+    expect(feed().currentStatus.value).toBe('sampled')
+    await vi.advanceTimersByTimeAsync(LIVE_POLL_MS)
+    await flushPromises()
+    expect(feed().blocked.value).toBe(true)
+    expect(feed().currentStatus.value).toBe('unavailable')
+    wrapper.unmount()
+  })
+
   it('loads the selected range with only the range parameter', async () => {
     mockGetServiceTraffic.mockResolvedValue(hostResponse())
     const { wrapper, feed } = setup()

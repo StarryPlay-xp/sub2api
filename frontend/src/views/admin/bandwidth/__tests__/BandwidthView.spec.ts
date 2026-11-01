@@ -82,6 +82,18 @@ beforeEach(() => {
 })
 
 describe('BandwidthView', () => {
+  it('loads nodes beyond the first page and deduplicates nodes moved between pages', async () => {
+    mockListProxies
+      .mockResolvedValueOnce({ items: [proxy(11, 'First node')], pages: 2 })
+      .mockResolvedValueOnce({ items: [proxy(11, 'First node'), proxy(13, 'Last node')], pages: 2 })
+    const wrapper = create()
+    await flushPromises()
+    expect(mockListProxies.mock.calls.map((call) => call[0])).toEqual([1, 2])
+    expect(mockDetails.mock.calls.map((call) => call[0])).toEqual([11, 13])
+    expect(wrapper.text()).toContain('Last node')
+    wrapper.unmount()
+  })
+
   it('loads host traffic and every WireGuard node for the same range', async () => {
     const wrapper = create()
     await flushPromises()

@@ -58,10 +58,19 @@ export function useWireGuardNodes(range: Ref<PresetRange>) {
     if (reset) nodes.value = nodes.value.map((node) => ({ ...node, report: null, error: '' }))
     loading.value = true
     try {
-      const page = await proxiesAPI.list(1, NODE_PAGE_SIZE, { protocol: 'wireguard' }, { signal: request.signal })
-      if (current !== seq || disposed) return
+      const proxies: Proxy[] = []
+      const seen = new Set<number>()
+      for (let pageNumber = 1; ; pageNumber++) {
+        const page = await proxiesAPI.list(pageNumber, NODE_PAGE_SIZE, { protocol: 'wireguard' }, { signal: request.signal })
+        if (current !== seq || disposed) return
+        for (const proxy of page.items) {
+          if (!seen.has(proxy.id)) proxies.push(proxy)
+          seen.add(proxy.id)
+        }
+        if (pageNumber >= page.pages || page.items.length === 0) break
+      }
       const results = await Promise.all(
-        page.items.map(async (proxy): Promise<WireGuardNodeState> => {
+        proxies.map(async (proxy): Promise<WireGuardNodeState> => {
           const [details, report] = await Promise.allSettled([
             wireguardAPI.details(proxy.id, 'minute', request.signal),
             wireguardAPI.traffic(proxy.id, { range: range.value }, request.signal)
