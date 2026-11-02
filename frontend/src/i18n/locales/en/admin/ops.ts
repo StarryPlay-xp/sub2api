@@ -484,6 +484,15 @@ export default {
         }
       },
       alertRules: {
+        managed: {
+          description: 'Managed by the VPS traffic plan on the Traffic page. Change the reminder lines in the plan settings; it cannot be edited or deleted here.',
+          manage: 'Open plan settings',
+          hostTraffic: {
+            usage_warning: 'VPS traffic plan: usage reached the reminder line',
+            usage_critical: 'VPS traffic plan: usage reached the critical line',
+            projection: 'VPS traffic plan: projected overage at period end'
+          }
+        },
         title: 'Alert Rules',
         description: 'Create and manage threshold-based system alerts (email-only)',
         loading: 'Loading...',

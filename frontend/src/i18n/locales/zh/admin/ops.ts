@@ -484,6 +484,15 @@ export default {
         }
       },
       alertRules: {
+        managed: {
+          description: '由流量监控页的 VPS 流量套餐管理，请在套餐设置中修改提醒线；这里不能编辑或删除。',
+          manage: '去套餐设置',
+          hostTraffic: {
+            usage_warning: 'VPS 流量套餐：用量达到提醒线',
+            usage_critical: 'VPS 流量套餐：用量达到严重线',
+            projection: 'VPS 流量套餐：预计周期末超额'
+          }
+        },
         title: '告警规则',
         description: '创建与管理系统阈值告警（仅邮件通知）',
         loading: '加载中...',

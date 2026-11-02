@@ -274,7 +274,278 @@ export default {
       notFound: '找不到这个出口。'
     }
   },
+  host: {
+    title: 'VPS 流量套餐',
+    periodBadge: '按账期统计',
+    subtitle: '整台 VPS 网卡的收发量，接近服务商计费口径；不受下方时间范围影响',
+    actions: {
+      setup: '设置套餐',
+      edit: '编辑套餐',
+      calibrate: '对账',
+      fill: '补齐期初用量',
+      detail: '详情',
+      copy: '复制',
+      docs: '查看完整部署说明'
+    },
+    usedWithMode: '本期已用 · {mode}',
+    ofQuota: '/ {quota}',
+    remaining: '剩余',
+    over: '已超出',
+    projection: '预计周期末',
+    projectionPending: '本期满 3 天数据后显示',
+    remainingSub: '额度的 {percent}',
+    overSub: '已超过套餐额度',
+    projectionOfQuota: '约为额度的 {percent}',
+    countdown: {
+      days: '{days} 天后',
+      soon: '不到 1 天'
+    },
+    tone: {
+      normal: '用量正常',
+      warning: '已过提醒线',
+      critical: '已过严重线',
+      over: '已超额'
+    },
+    pace: {
+      label: '时间进度 {percent}',
+      hint: '按时间均匀使用时，用量应在这条线附近；用量条超过它，说明比平均速度用得快'
+    },
+    direction: {
+      title: '双向流量',
+      inbound: '入站',
+      outbound: '出站',
+      billed: '计费',
+      notBilled: '不计费',
+      larger: '计费方向',
+      share: '占 {percent}',
+      measuredOnly: '只含实测部分；期初补齐的 {bytes} 来自服务商面板，无法区分方向。',
+      rule: {
+        both: '两个方向相加计费',
+        outbound: '只计出站',
+        inbound: '只计入站',
+        max: '取较大的方向计费',
+        none: '统计起点以来'
+      }
+    },
+    nextReset: '下次重置',
+    resetRule: '每月 {day} 日 {time}（{timezone}）',
+    legend: {
+      measured: '实测',
+      adjustment: '服务商补齐',
+      threshold: '{percent}% 提醒线',
+      thresholds: '{values} 提醒线',
+      quotaLine: '套餐额度'
+    },
+    bound: {
+      about: '约',
+      atLeast: '至少',
+      atMost: '至多'
+    },
+    coverage: {
+      exact: '本期数据完整',
+      estimate: '含服务商补齐',
+      override: '已按服务商数值校准',
+      lower: '本期数据不完整',
+      joined: '{time} 起开始统计，此前的用量未包含',
+      joinedFilled: '{time} 之前的用量来自服务商面板数值，之后为实测',
+      lost: '有约 {duration} 的流量无法统计',
+      unallocated: '{bytes} 无法确定属于哪个账期，未计入',
+      fillLine: '期初补齐 {bytes}',
+      overrideLine: '按服务商数值调整 {bytes}',
+      minorRestarts: '本期主机重启 {count} 次，每次最多漏计约 1 分钟'
+    },
+    interfaceRate: '↓ {rx} · ↑ {tx}',
+    lastSample: '最近读数',
+    alerts: {
+      label: '用量提醒',
+      on: '{warning}% 提醒 · {critical}% 严重',
+      onWithProjection: '{warning}% 提醒 · {critical}% 严重 · 预计超额',
+      off: '未开启',
+      emailOff: '告警邮件未配置，提醒只出现在运维告警列表中',
+      usage_warning: '用量已超过提醒线',
+      usage_critical: '用量已超过严重线',
+      projection_warning: '按当前速度，周期末将超出额度',
+      projection_critical: '按当前速度，周期末将超出额度'
+    },
+    stale: '已有 {duration} 没有新读数，数值停留在 {time}。sub2api 可能刚重启，或读取网卡失败。',
+    unitHint: '最近 {samples} 次对账的偏差稳定，且接近 1000 与 1024 进制之间的换算差，服务商可能按 {base} 进制计算。',
+    unitHintAction: '改为 {base} 进制',
+    ambiguous: '检测到多块网卡，无法确定哪块承载套餐流量，请在套餐设置中确认计费网卡。',
+    lastReconcile: '{time} 对账：服务商 {provider}，本系统 {measured}，偏差 {deviation}',
+    noPlan: {
+      since: '自 {time} 起 VPS 网卡已用',
+      cta: '设置套餐后，可以查看本期用量和剩余额度，并在接近额度时提醒。'
+    },
+    starting: '正在读取 VPS 网卡计数，第一个读数会在一分钟内出现。',
+    unsupported: '当前运行环境不支持整机流量统计（仅支持 Linux）。',
+    mount: {
+      title: '整机流量统计尚未开启',
+      body: 'sub2api 运行在 Docker 容器中，默认只能看到容器自己的网卡。需要把宿主机的 /sys 以只读方式提供给容器；只需操作一次，之后通过后台升级会自动保留。',
+      step1: '在部署目录新建 compose.host-traffic.yml，内容如下：',
+      step2: '如果使用了更新服务，把这个文件加入 /etc/sub2api-updater.json 的 compose_files。',
+      step3: '带上全部 compose 文件重建 sub2api 容器，服务会中断几秒。',
+      note: '只读挂载，只用来读取网卡计数；开启前不会把容器自己的流量当作整机流量显示。',
+      copied: '配置片段已复制'
+    },
+    age: {
+      seconds: '{count} 秒前',
+      minutes: '{count} 分钟前',
+      hours: '{count} 小时前',
+      days: '{count} 天前'
+    },
+    duration: {
+      minutes: '{count} 分钟',
+      hours: '{count} 小时',
+      days: '{count} 天'
+    },
+    billing: {
+      both: '双向计费',
+      outbound: '仅出站计费',
+      inbound: '仅入站计费',
+      max: '按较大方向计费'
+    },
+    billingHint: {
+      both: '入站与出站相加',
+      outbound: '只算 VPS 发出的流量',
+      inbound: '只算 VPS 收到的流量',
+      max: '入站、出站各自累计，取较大者'
+    },
+    usage: {
+      title: 'VPS 整机网卡',
+      hint: '整台 VPS 网卡在所选期间的收发量，包含其他程序和协议开销，与上方服务流量口径不同，不能相加。',
+      inOut: '入站 {inbound} · 出站 {outbound}',
+      coverage: '读数覆盖 {percent}',
+      notEnabled: '整机统计尚未开启，开启方法见页面顶部',
+      noRecords: '所选期间暂无网卡读数',
+      unsupportedEnv: '当前运行环境不支持整机统计'
+    },
+    form: {
+      createTitle: '设置 VPS 流量套餐',
+      editTitle: '编辑 VPS 流量套餐',
+      intro: '打开服务商面板，照着上面的信息填写即可。',
+      quota: '套餐额度',
+      billing: '计费方式',
+      nextReset: '下次重置日期',
+      nextResetHint: '服务商面板上显示的下一次流量重置日期',
+      derivedRule: '即{rule}',
+      clampedHint: '这天是当月最后一天。如果服务商实际按 29、30 或 31 日重置，只是遇到短月才提前，请在高级设置中改为实际日期。',
+      timezone: '重置时区',
+      timezoneHint: '以服务商面板注明的时区为准；不确定时保持 UTC',
+      timezoneCommon: '常用',
+      timezoneAll: '全部时区',
+      currentUsed: '服务商面板当前已用（可选）',
+      currentUsedHint: '填写刚刷新的数值，用来补上接入前的用量；留空则从现在开始统计。',
+      alerts: '用量提醒',
+      alertsHint: '达到提醒线、严重线，或按当前速度周期末会超额时，通过运维告警和告警邮件提醒。',
+      warningPercent: '提醒线',
+      criticalPercent: '严重线',
+      projection: '预计超额时提醒',
+      advanced: '高级设置',
+      resetDay: '每月重置日',
+      resetDayHint: '遇到短月时在当月最后一天重置',
+      resetTime: '重置时刻',
+      unitBase: '单位进制',
+      unitBase1000: '1000 进制（1 TB = 1000 GB）',
+      unitBase1024: '1024 进制（1 TiB = 1024 GiB）',
+      unitBaseHint: '大多数服务商按 1000 进制；如果对账偏差稳定在 7%～10%，服务商可能按 1024 进制计算。',
+      interfaces: '计费网卡',
+      interfacesAuto: '自动选择（推荐）',
+      interfacesHint: '只勾选承载套餐流量的公网网卡，多选时会相加。',
+      defaultRoute: '默认出口',
+      save: '保存',
+      saving: '保存中…',
+      saved: '套餐已保存',
+      savedFilled: '套餐已保存，并已补齐本期接入前的用量',
+      errors: {
+        quota: '请输入大于 0 的额度，最多 4 位小数',
+        date: '请选择有效的日期',
+        resetDay: '重置日需在 1–31 之间',
+        timezone: '请选择有效的时区',
+        percent: '提醒线需小于严重线，且都在 1–100 之间',
+        currentUsed: '请输入非负数字，最多 4 位小数',
+        interfaces: '至少选择一块网卡'
+      }
+    },
+    calibrate: {
+      title: '与服务商对账',
+      fillTitle: '补齐期初用量',
+      intro: '输入服务商面板上刚刷新的“本期已用”，系统会自动配对同一时刻的网卡读数。',
+      fillExplain: '本期从 {time} 才开始统计，这个数值将用来补上此前的用量。',
+      reconcileExplain: '本期数据已经完整或已补齐，默认只记录对比结果，不改变本期用量。',
+      override: '以服务商为准，替换本期用量',
+      overrideHint: '把服务商数值作为本期的新起点；之后的用量仍按实测累加。',
+      value: '服务商已用量',
+      current: '本系统当前统计的本期用量：{value}',
+      submit: '提交',
+      result: {
+        fill: '已补齐期初用量',
+        reconcile: '已记录对账结果',
+        override: '已按服务商数值校准'
+      }
+    },
+    detail: {
+      title: 'VPS 流量套餐详情',
+      days: '本期每日用量',
+      daysRecent: '最近 30 天每日用量',
+      daysHint: '按 {timezone} 的自然日统计；只含当天实测，不含服务商补齐和无法分到具体日期的量',
+      dayPartial: '当天有 {duration} 没有读数',
+      periods: '历史账期',
+      periodsEmpty: '还没有已结束的账期',
+      calibrations: '对账与补齐记录',
+      calibrationsEmpty: '还没有对账记录',
+      interfaces: '网卡',
+      collection: '采集信息',
+      source: '数据来源',
+      sourceHostMount: '宿主机只读挂载（Docker）',
+      sourceNative: '直接读取宿主机',
+      startedAt: '开始统计',
+      hostBoot: '主机开机',
+      lastSample: '最近读数',
+      columns: {
+        period: '账期',
+        billed: '计费用量',
+        usage: '占额度',
+        rx: '入站',
+        tx: '出站',
+        coverage: '数据',
+        at: '时间',
+        kind: '类型',
+        provider: '服务商',
+        measured: '本系统',
+        deviation: '偏差',
+        name: '网卡',
+        route: '默认出口',
+        rate: '当前速率',
+        selected: '计费'
+      },
+      kind: {
+        fill: '补齐',
+        reconcile: '对账',
+        override: '以服务商为准'
+      },
+      bound: {
+        exact: '完整',
+        estimate: '估算',
+        lower: '不完整'
+      },
+      routeUnknown: '容器内无法读取',
+      yes: '是',
+      no: '否'
+    },
+    errors: {
+      conflict: '套餐已被其他人修改，请刷新后重试。',
+      notReady: '暂时没有最新的网卡读数，请稍后再试。',
+      noPlan: '请先设置套餐。',
+      invalid: '输入不符合要求，请检查后重试。',
+      forbidden: '需要完整管理员权限才能查看VPS 流量。',
+      disabled: '运维监控已关闭，VPS 流量统计不可用；可在系统设置中开启。',
+      unsupported: '当前后端版本尚未提供VPS 流量统计，请升级后端后再试。',
+      unavailable: 'VPS 流量统计尚未初始化，请稍后重试。',
+      load: 'VPS 流量加载失败，请稍后重试。'
+    }
+  },
   quality: {
+    hostNicBasis: 'VPS 整机网卡流量读取整台 VPS 网卡的收发累计计数，包含其他程序以及 HTTP 头、TLS、TCP/IP 开销，接近服务商计费口径，但不保证与账单完全一致；与服务流量口径不同，不能相加。',
     duplicateBasis: '同一内容从上游传到本站、再从本站传给客户端，会在两个方向各记一次；本页流量不能再与 WireGuard 节点流量相加。',
     observed: '观察范围',
     subjectBasis: '用户和 API Key 的流量按同一口径归属；鉴权失败、连接池预热等无法对应用户的部分计为未归属。按用户、Key 的数据只保存小时汇总，保留 90 天。'

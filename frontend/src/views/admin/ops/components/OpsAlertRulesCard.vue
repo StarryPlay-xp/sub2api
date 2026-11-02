@@ -43,6 +43,19 @@ const sortedRules = computed(() => {
   return [...rules.value].sort((a, b) => (b.id || 0) - (a.id || 0))
 })
 
+// 托管规则（VPS 流量套餐的提醒）只读显示，提醒线在流量监控页的套餐设置中修改。
+const HOST_TRAFFIC_PREFIX = 'host_traffic:'
+const HOST_TRAFFIC_RULES = new Set(['usage_warning', 'usage_critical', 'projection'])
+
+function ruleName(row: AlertRule) {
+  const key = row.managed_by?.startsWith(HOST_TRAFFIC_PREFIX) ? row.managed_by.slice(HOST_TRAFFIC_PREFIX.length) : ''
+  return HOST_TRAFFIC_RULES.has(key) ? t(`admin.ops.alertRules.managed.hostTraffic.${key}`) : row.name
+}
+
+function ruleDescription(row: AlertRule) {
+  return row.managed_by ? t('admin.ops.alertRules.managed.description') : row.description
+}
+
 const showEditor = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
@@ -429,9 +442,9 @@ function cancelDelete() {
           <div v-for="row in sortedRules" :key="row.id" class="space-y-2 p-4">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
-                <div v-if="row.description" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
-                  {{ row.description }}
+                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ ruleName(row) }}</div>
+                <div v-if="ruleDescription(row)" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ ruleDescription(row) }}
                 </div>
               </div>
               <span class="shrink-0 text-xs font-bold text-gray-700 dark:text-gray-200">{{ row.severity }}</span>
@@ -445,7 +458,10 @@ function cancelDelete() {
               <span class="text-xs text-gray-700 dark:text-gray-200">
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
               </span>
-              <div class="flex items-center gap-2">
+              <RouterLink v-if="row.managed_by" to="/admin/traffic" class="btn btn-sm btn-secondary" data-testid="managed-rule-link">
+                {{ t('admin.ops.alertRules.managed.manage') }}
+              </RouterLink>
+              <div v-else class="flex items-center gap-2">
                 <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
                 <button class="btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
               </div>
@@ -478,9 +494,9 @@ function cancelDelete() {
           <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-800">
             <tr v-for="row in sortedRules" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/50">
               <td class="px-4 py-3">
-                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
-                <div v-if="row.description" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
-                  {{ row.description }}
+                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ ruleName(row) }}</div>
+                <div v-if="ruleDescription(row)" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ ruleDescription(row) }}
                 </div>
                 <div v-if="row.updated_at" class="mt-1 text-[10px] text-gray-400">
                   {{ formatDateTime(row.updated_at) }}
@@ -498,8 +514,13 @@ function cancelDelete() {
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
-                <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
-                <button class="ml-2 btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
+                <RouterLink v-if="row.managed_by" to="/admin/traffic" class="btn btn-sm btn-secondary" data-testid="managed-rule-link">
+                  {{ t('admin.ops.alertRules.managed.manage') }}
+                </RouterLink>
+                <template v-else>
+                  <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
+                  <button class="ml-2 btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
+                </template>
               </td>
             </tr>
           </tbody>

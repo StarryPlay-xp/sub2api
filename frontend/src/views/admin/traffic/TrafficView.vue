@@ -1,6 +1,19 @@
 <template>
   <AppLayout>
     <div class="space-y-6 pb-12">
+      <!-- 本机套餐按账期统计，放在时间范围栏之上，不随下方范围变化 -->
+      <HostQuotaCard
+        :status="hostFeed.status.value"
+        :loaded="hostFeed.loaded.value"
+        :loading="hostFeed.loading.value"
+        :error="hostFeed.error.value"
+        :unsupported="hostFeed.unsupported.value"
+        @setup="openPlan()"
+        @edit="openPlan"
+        @calibrate="calibrating = true"
+        @detail="hostDetailOpen = true"
+      />
+
       <TrafficRangeBar
         v-model="range"
         :options="rangeOptions"
@@ -20,7 +33,16 @@
 
       <WarningList :warnings="warnings" />
 
-      <TrafficOverview :report="report" :loading="feed.loading.value" />
+      <TrafficOverview :report="report" :loading="feed.loading.value">
+        <template #host>
+          <HostUsageStrip
+            v-if="!hostUsage.unsupported.value"
+            :usage="hostUsage.usage.value"
+            :loading="hostUsage.loading.value"
+            :error="hostUsage.error.value"
+          />
+        </template>
+      </TrafficOverview>
 
       <SubjectRankingCard ref="rankingCard" mode="traffic" :range="range" @select="selected = $event" />
 
@@ -57,6 +79,7 @@
             <p>{{ t('bandwidth.quality.hostBasis') }}</p>
             <p>{{ t('traffic.quality.duplicateBasis') }}</p>
             <p>{{ t('traffic.quality.subjectBasis') }}</p>
+            <p>{{ t('traffic.quality.hostNicBasis') }}</p>
           </div>
           <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
             <dt class="text-gray-400 dark:text-dark-500">{{ t('traffic.quality.observed') }}</dt>
@@ -84,6 +107,21 @@
     <EgressRouteDialog v-if="selectedRoute" :route="selectedRoute" :range="range" @close="selectedRoute = null" />
 
     <WireGuardDialog v-if="manageNodeId !== null" :node-id="manageNodeId" @close="manageNodeId = null" @changed="nodeFeed.refresh()" />
+
+    <HostPlanDialog
+      v-if="planDialog && hostFeed.status.value"
+      :status="hostFeed.status.value"
+      :patch="planDialog.patch"
+      @close="planDialog = null"
+      @saved="onPlanSaved"
+    />
+    <HostCalibrationDialog
+      v-if="calibrating && hostFeed.status.value?.plan"
+      :status="hostFeed.status.value"
+      @close="calibrating = false"
+      @saved="onCalibrated"
+    />
+    <HostDetailDialog v-if="hostDetailOpen && hostFeed.status.value" :status="hostFeed.status.value" @close="hostDetailOpen = false" />
   </AppLayout>
 </template>
 
@@ -94,6 +132,9 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import WireGuardDialog from '@/components/admin/proxy/WireGuardDialog.vue'
 import EgressRouteDialog from '@/components/admin/traffic/EgressRouteDialog.vue'
+import HostCalibrationDialog from '@/components/admin/traffic/HostCalibrationDialog.vue'
+import HostDetailDialog from '@/components/admin/traffic/HostDetailDialog.vue'
+import HostPlanDialog from '@/components/admin/traffic/HostPlanDialog.vue'
 import NodeDetailDialog from '@/components/admin/traffic/NodeDetailDialog.vue'
 import SubjectDetailDialog from '@/components/admin/traffic/SubjectDetailDialog.vue'
 import SubjectRankingCard from '@/components/admin/traffic/SubjectRankingCard.vue'
@@ -102,11 +143,16 @@ import WarningList from '@/components/admin/traffic/WarningList.vue'
 import { reportWarnings } from '@/components/admin/traffic/reportWarnings'
 import { usePresetRange } from '@/components/admin/traffic/usePresetRange'
 import { useEgressReport } from '@/components/admin/traffic/useEgress'
+import { useHostTrafficStatus, useHostTrafficUsage } from '@/components/admin/traffic/useHostTraffic'
+import type { HostCalibrationKind, HostTrafficStatus, HostUnitBase } from '@/api/admin/hostTraffic'
 import type { EgressRouteIdentity } from '@/api/admin/trafficEgress'
 import type { TrafficSubjectIdentity } from '@/api/admin/trafficSubjects'
 import { useServiceTrafficFeed } from '@/views/admin/bandwidth/useServiceTrafficFeed'
 import { useWireGuardNodes } from '@/views/admin/bandwidth/useWireGuardNodes'
 import { formatSampleTime, isMissingTime } from '@/utils/trafficFormat'
+import { useAppStore } from '@/stores/app'
+import HostQuotaCard from './components/HostQuotaCard.vue'
+import HostUsageStrip from './components/HostUsageStrip.vue'
 import NodeTrafficCard from './components/NodeTrafficCard.vue'
 import RelayPathCard from './components/RelayPathCard.vue'
 import TrafficOverview from './components/TrafficOverview.vue'
@@ -118,6 +164,9 @@ const { range, options: rangeOptions } = usePresetRange()
 const feed = useServiceTrafficFeed(range, { live: false })
 const nodeFeed = useWireGuardNodes(range)
 const egressFeed = useEgressReport(range)
+const hostFeed = useHostTrafficStatus()
+const hostUsage = useHostTrafficUsage(range)
+const appStore = useAppStore()
 
 const report = computed(() => feed.report.value)
 const selected = ref<TrafficSubjectIdentity | null>(null)
@@ -152,10 +201,33 @@ const observedText = computed(() => {
 
 const warnings = computed(() => reportWarnings(report.value, feed.persistenceError.value, t))
 
+const planDialog = ref<{ patch: { unit_base: HostUnitBase } | null } | null>(null)
+const calibrating = ref(false)
+const hostDetailOpen = ref(false)
+
+function openPlan(patch?: { unit_base: HostUnitBase }) {
+  planDialog.value = { patch: patch ?? null }
+}
+
+function onPlanSaved(status: HostTrafficStatus, filled: boolean) {
+  planDialog.value = null
+  hostFeed.apply(status)
+  hostUsage.refresh()
+  appStore.showSuccess(t(filled ? 'traffic.host.form.savedFilled' : 'traffic.host.form.saved'))
+}
+
+function onCalibrated(status: HostTrafficStatus, kind: HostCalibrationKind) {
+  calibrating.value = false
+  hostFeed.apply(status)
+  appStore.showSuccess(t(`traffic.host.calibrate.result.${kind}`))
+}
+
 function refreshAll() {
   feed.refresh()
   rankingCard.value?.refresh()
   nodeFeed.refresh()
   egressFeed.refresh()
+  hostFeed.refresh()
+  hostUsage.refresh()
 }
 </script>

@@ -274,7 +274,278 @@ export default {
       notFound: 'This egress cannot be found.'
     }
   },
+  host: {
+    title: 'VPS traffic plan',
+    periodBadge: 'Per billing period',
+    subtitle: 'Bytes sent and received by the whole VPS network interface, close to how the provider bills; not affected by the range below',
+    actions: {
+      setup: 'Set up plan',
+      edit: 'Edit plan',
+      calibrate: 'Reconcile',
+      fill: 'Fill in earlier usage',
+      detail: 'Details',
+      copy: 'Copy',
+      docs: 'Full deployment guide'
+    },
+    usedWithMode: 'Used this period · {mode}',
+    ofQuota: '/ {quota}',
+    remaining: 'Remaining',
+    over: 'Over by',
+    projection: 'Projected at period end',
+    projectionPending: 'Shown after 3 days of data this period',
+    remainingSub: '{percent} of quota',
+    overSub: 'Above the plan quota',
+    projectionOfQuota: 'About {percent} of quota',
+    countdown: {
+      days: 'In {days} days',
+      soon: 'Within 1 day'
+    },
+    tone: {
+      normal: 'On track',
+      warning: 'Past reminder line',
+      critical: 'Past critical line',
+      over: 'Over quota'
+    },
+    pace: {
+      label: 'Time elapsed {percent}',
+      hint: 'With even use over the period, usage would sit near this line; a bar past it means usage is faster than average'
+    },
+    direction: {
+      title: 'Both directions',
+      inbound: 'Inbound',
+      outbound: 'Outbound',
+      billed: 'Billed',
+      notBilled: 'Not billed',
+      larger: 'Billed direction',
+      share: '{percent} of total',
+      measuredOnly: 'Measured part only; the {bytes} filled in from the provider panel has no direction.',
+      rule: {
+        both: 'Both directions added',
+        outbound: 'Outbound only',
+        inbound: 'Inbound only',
+        max: 'Larger direction billed',
+        none: 'Since counting started'
+      }
+    },
+    nextReset: 'Next reset',
+    resetRule: 'Day {day} of each month at {time} ({timezone})',
+    legend: {
+      measured: 'Measured here',
+      adjustment: 'Filled from provider',
+      threshold: '{percent}% reminder',
+      thresholds: '{values} reminder lines',
+      quotaLine: 'Plan quota'
+    },
+    bound: {
+      about: 'about',
+      atLeast: 'at least',
+      atMost: 'at most'
+    },
+    coverage: {
+      exact: 'Complete for this period',
+      estimate: 'Includes provider fill-in',
+      override: 'Calibrated to the provider value',
+      lower: 'Incomplete for this period',
+      joined: 'Counting since {time}; earlier usage is not included',
+      joinedFilled: 'Usage before {time} comes from the provider panel; measured after that',
+      lost: 'About {duration} of traffic could not be counted',
+      unallocated: '{bytes} could not be assigned to a period and is excluded',
+      fillLine: 'Filled in {bytes} for earlier usage',
+      overrideLine: 'Adjusted {bytes} to the provider value',
+      minorRestarts: 'Host restarted {count} times this period; each may miss up to about 1 minute'
+    },
+    interfaceRate: '↓ {rx} · ↑ {tx}',
+    lastSample: 'Last reading',
+    alerts: {
+      label: 'Usage reminders',
+      on: '{warning}% reminder · {critical}% critical',
+      onWithProjection: '{warning}% reminder · {critical}% critical · projected overage',
+      off: 'Off',
+      emailOff: 'Alert email is not configured; reminders only appear in the ops alert list',
+      usage_warning: 'Usage passed the reminder line',
+      usage_critical: 'Usage passed the critical line',
+      projection_warning: 'At the current pace, usage will exceed the quota by period end',
+      projection_critical: 'At the current pace, usage will exceed the quota by period end'
+    },
+    stale: 'No new reading for {duration}; values are from {time}. sub2api may have just restarted, or reading the interface failed.',
+    unitHint: 'The last {samples} reconciliations deviate steadily by about the difference between 1000- and 1024-based units; the provider may use {base}-based units.',
+    unitHintAction: 'Switch to {base}-based',
+    ambiguous: 'Several interfaces were found and the one carrying plan traffic cannot be determined. Confirm the billed interface in the plan settings.',
+    lastReconcile: 'Reconciled {time}: provider {provider}, measured {measured}, deviation {deviation}',
+    noPlan: {
+      since: 'Used by the VPS interface since {time}',
+      cta: 'Set up the plan to see usage this period and remaining quota, with reminders near the limit.'
+    },
+    starting: 'Reading the VPS interface counters; the first reading appears within a minute.',
+    unsupported: 'Whole-server traffic is not supported in this environment (Linux only).',
+    mount: {
+      title: 'Whole-server traffic is not enabled yet',
+      body: 'sub2api runs in a Docker container and only sees the container network interface by default. Give the container read-only access to the host /sys once; later upgrades from the admin panel keep it.',
+      step1: 'Create compose.host-traffic.yml in the deployment directory with:',
+      step2: 'If you use the updater service, add this file to compose_files in /etc/sub2api-updater.json.',
+      step3: 'Recreate the sub2api container with all compose files; the service pauses for a few seconds.',
+      note: 'Read-only and used only for interface counters. Until it is enabled, container traffic is never shown as whole-server traffic.',
+      copied: 'Snippet copied'
+    },
+    age: {
+      seconds: '{count}s ago',
+      minutes: '{count} min ago',
+      hours: '{count} h ago',
+      days: '{count} d ago'
+    },
+    duration: {
+      minutes: '{count} min',
+      hours: '{count} h',
+      days: '{count} d'
+    },
+    billing: {
+      both: 'Both directions',
+      outbound: 'Outbound only',
+      inbound: 'Inbound only',
+      max: 'Larger direction'
+    },
+    billingHint: {
+      both: 'Inbound plus outbound',
+      outbound: 'Only traffic sent by the VPS',
+      inbound: 'Only traffic received by the VPS',
+      max: 'Inbound and outbound summed separately; the larger counts'
+    },
+    usage: {
+      title: 'VPS interface (whole server)',
+      hint: 'Bytes on the whole VPS interface in the selected range, including other programs and protocol overhead. Different basis from the service traffic above; do not add them.',
+      inOut: 'In {inbound} · out {outbound}',
+      coverage: 'Readings cover {percent}',
+      notEnabled: 'Whole-server traffic is not enabled; see the top of the page',
+      noRecords: 'No interface readings in the selected range',
+      unsupportedEnv: 'Not supported in this environment'
+    },
+    form: {
+      createTitle: 'Set up VPS traffic plan',
+      editTitle: 'Edit VPS traffic plan',
+      intro: 'Open your provider panel and copy the values shown there.',
+      quota: 'Quota',
+      billing: 'Billing',
+      nextReset: 'Next reset date',
+      nextResetHint: 'The next traffic reset date shown in the provider panel',
+      derivedRule: 'That is: {rule}',
+      clampedHint: 'This is the last day of the month. If the provider actually resets on the 29th, 30th or 31st and only moves earlier in short months, set the real day in Advanced.',
+      timezone: 'Reset time zone',
+      timezoneHint: 'Use the time zone stated by the provider; keep UTC if unsure',
+      timezoneCommon: 'Common',
+      timezoneAll: 'All time zones',
+      currentUsed: 'Current usage in provider panel (optional)',
+      currentUsedHint: 'Enter a freshly refreshed value to fill in usage before counting started; leave empty to count from now.',
+      alerts: 'Usage reminders',
+      alertsHint: 'Remind through ops alerts and alert email when usage reaches the reminder or critical line, or will exceed the quota at the current pace.',
+      warningPercent: 'Reminder line',
+      criticalPercent: 'Critical line',
+      projection: 'Remind on projected overage',
+      advanced: 'Advanced',
+      resetDay: 'Reset day of month',
+      resetDayHint: 'In short months the reset happens on the last day',
+      resetTime: 'Reset time',
+      unitBase: 'Units',
+      unitBase1000: '1000-based (1 TB = 1000 GB)',
+      unitBase1024: '1024-based (1 TiB = 1024 GiB)',
+      unitBaseHint: 'Most providers use 1000-based units; a steady 7–10% reconciliation deviation suggests 1024-based units.',
+      interfaces: 'Billed interfaces',
+      interfacesAuto: 'Automatic (recommended)',
+      interfacesHint: 'Select only public interfaces carrying plan traffic; multiple are added together.',
+      defaultRoute: 'Default route',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Plan saved',
+      savedFilled: 'Plan saved and earlier usage this period filled in',
+      errors: {
+        quota: 'Enter a quota above 0 with up to 4 decimals',
+        date: 'Choose a valid date',
+        resetDay: 'Reset day must be between 1 and 31',
+        timezone: 'Choose a valid time zone',
+        percent: 'The reminder line must be below the critical line, both between 1 and 100',
+        currentUsed: 'Enter a non-negative number with up to 4 decimals',
+        interfaces: 'Select at least one interface'
+      }
+    },
+    calibrate: {
+      title: 'Reconcile with provider',
+      fillTitle: 'Fill in earlier usage',
+      intro: 'Enter the freshly refreshed “used this period” from the provider panel. It is paired with the server reading taken at the same time.',
+      fillExplain: 'Counting started at {time} this period; this value fills in usage before that.',
+      reconcileExplain: 'This period is already complete or filled in. By default only the comparison is recorded and usage is unchanged.',
+      override: 'Use the provider value and replace usage this period',
+      overrideHint: 'The provider value becomes the new starting point; later usage is still added from server readings.',
+      value: 'Provider usage',
+      current: 'Usage this period counted here: {value}',
+      submit: 'Submit',
+      result: {
+        fill: 'Earlier usage filled in',
+        reconcile: 'Reconciliation recorded',
+        override: 'Calibrated to the provider value'
+      }
+    },
+    detail: {
+      title: 'VPS traffic plan details',
+      days: 'Daily usage this period',
+      daysRecent: 'Daily usage, last 30 days',
+      daysHint: 'Calendar days in {timezone}; only usage measured that day, excluding provider fill-in and amounts that cannot be placed on a day',
+      dayPartial: '{duration} without readings that day',
+      periods: 'Past periods',
+      periodsEmpty: 'No finished periods yet',
+      calibrations: 'Reconciliation and fill-in records',
+      calibrationsEmpty: 'No reconciliation yet',
+      interfaces: 'Interfaces',
+      collection: 'Collection',
+      source: 'Source',
+      sourceHostMount: 'Read-only host mount (Docker)',
+      sourceNative: 'Read directly on the host',
+      startedAt: 'Counting since',
+      hostBoot: 'Host booted',
+      lastSample: 'Last reading',
+      columns: {
+        period: 'Period',
+        billed: 'Billed',
+        usage: 'Of quota',
+        rx: 'Inbound',
+        tx: 'Outbound',
+        coverage: 'Data',
+        at: 'Time',
+        kind: 'Type',
+        provider: 'Provider',
+        measured: 'Server',
+        deviation: 'Deviation',
+        name: 'Interface',
+        route: 'Default route',
+        rate: 'Current rate',
+        selected: 'Billed'
+      },
+      kind: {
+        fill: 'Fill-in',
+        reconcile: 'Reconcile',
+        override: 'Use provider'
+      },
+      bound: {
+        exact: 'Complete',
+        estimate: 'Estimate',
+        lower: 'Incomplete'
+      },
+      routeUnknown: 'Unavailable in container',
+      yes: 'Yes',
+      no: 'No'
+    },
+    errors: {
+      conflict: 'The plan was changed by someone else. Refresh and try again.',
+      notReady: 'No recent interface reading yet. Please try again shortly.',
+      noPlan: 'Set up the plan first.',
+      invalid: 'Some input is invalid. Check it and try again.',
+      forbidden: 'Full administrator access is required to view VPS traffic.',
+      disabled: 'Ops monitoring is off, so VPS traffic is unavailable. Turn it on in system settings.',
+      unsupported: 'This backend version does not provide VPS traffic yet. Upgrade the backend and try again.',
+      unavailable: 'VPS traffic is not initialized yet. Please try again later.',
+      load: 'Failed to load VPS traffic. Please try again later.'
+    }
+  },
   quality: {
+    hostNicBasis: 'VPS interface traffic reads the cumulative counters of the whole VPS interface, including other programs and HTTP header, TLS and TCP/IP overhead. It is close to how providers bill but not guaranteed to match the invoice, and it uses a different basis from service traffic, so do not add them.',
     duplicateBasis: 'Content relayed from the upstream to this site and then to the client is counted once in each direction, so traffic on this page must not be added to WireGuard node traffic.',
     observed: 'Observed range',
     subjectBasis: 'User and API key traffic uses the same basis; traffic that cannot be tied to a user, such as failed authentication or connection-pool warm-up, is unattributed. Per-user and per-key data is kept as hourly totals for 90 days.'

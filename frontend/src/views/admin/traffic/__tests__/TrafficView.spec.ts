@@ -4,6 +4,7 @@ import TrafficView from '../TrafficView.vue'
 import { hostResponse, wgDetails, wgReport } from '@/views/admin/bandwidth/__tests__/fixtures'
 import { detailData, rankingData } from '@/components/admin/traffic/__tests__/fixtures'
 import { egressDetail, egressReport, egressRoute } from '@/components/admin/traffic/__tests__/egressFixtures'
+import { hostScenario, hostStatus, hostUsage } from '@/components/admin/traffic/__tests__/hostFixtures'
 import { REPORT_POLL_MS } from '@/views/admin/bandwidth/useServiceTrafficFeed'
 
 const mockGetServiceTraffic = vi.fn()
@@ -28,6 +29,17 @@ const mockEgressRoute = vi.fn()
 vi.mock('@/api/admin/trafficEgress', () => ({
   getTrafficEgress: (...args: unknown[]) => mockEgress(...args),
   getTrafficEgressRoute: (...args: unknown[]) => mockEgressRoute(...args)
+}))
+
+const mockHostStatus = vi.fn()
+const mockHostUsage = vi.fn()
+
+vi.mock('@/api/admin/hostTraffic', () => ({
+  getHostTraffic: (...args: unknown[]) => mockHostStatus(...args),
+  getHostTrafficUsage: (...args: unknown[]) => mockHostUsage(...args),
+  getHostTrafficDetail: vi.fn(),
+  saveHostTrafficPlan: vi.fn(),
+  calibrateHostTraffic: vi.fn()
 }))
 
 const mockListProxies = vi.fn()
@@ -92,6 +104,8 @@ beforeEach(() => {
   mockDetails.mockResolvedValue(wgDetails())
   mockTraffic.mockResolvedValue(wgReport())
   mockEgress.mockResolvedValue(egressReport())
+  mockHostStatus.mockResolvedValue(hostStatus())
+  mockHostUsage.mockImplementation(async (range: '24h' | '7d' | '30d' | '90d') => hostUsage(range))
   mockEgressRoute.mockImplementation(async (type: 'direct' | 'proxy' | 'wireguard', id: number) =>
     egressDetail(egressRoute(type, type === 'direct' ? null : id))
   )
@@ -201,6 +215,46 @@ describe('TrafficView', () => {
     expect(mockRanking).toHaveBeenCalledTimes(2)
     expect(mockTraffic).toHaveBeenCalledTimes(2)
     expect(mockEgress).toHaveBeenCalledTimes(2)
+    expect(mockHostStatus).toHaveBeenCalledTimes(2)
+    expect(mockHostUsage).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('puts the VPS plan above the range bar and whole-server traffic in the overview', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const card = wrapper.get('[data-testid="host-quota"]')
+    const rangeButton = wrapper.findAll('button').find((button) => button.text() === 'bandwidth.range.7d')!
+    // 套餐卡在时间范围栏之前，不随范围变化。
+    expect(card.element.compareDocumentPosition(rangeButton.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(card.text()).toContain('102.92 GB')
+    expect(wrapper.get('[data-testid="traffic-overview"] [data-testid="host-usage-total"]').text()).toBe('10.71 GiB')
+    expect(mockHostUsage).toHaveBeenLastCalledWith('24h', expect.anything())
+
+    await rangeButton.trigger('click')
+    await flushPromises()
+    expect(mockHostUsage).toHaveBeenLastCalledWith('7d', expect.anything())
+    expect(mockHostStatus).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('opens plan setup from the card', async () => {
+    mockHostStatus.mockResolvedValue(hostScenario('noPlan'))
+    const wrapper = create()
+    await flushPromises()
+    await wrapper.get('[data-testid="host-setup"]').trigger('click')
+    expect(wrapper.find('[data-testid="host-plan-form"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('keeps the page usable when the backend has no VPS traffic statistics', async () => {
+    mockHostStatus.mockRejectedValue({ status: 404 })
+    mockHostUsage.mockRejectedValue({ status: 404 })
+    const wrapper = create()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="host-error"]').text()).toBe('traffic.host.errors.unsupported')
+    expect(wrapper.find('[data-testid="host-usage"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="traffic-total"]').text()).toContain('1.5 GiB')
     wrapper.unmount()
   })
 })

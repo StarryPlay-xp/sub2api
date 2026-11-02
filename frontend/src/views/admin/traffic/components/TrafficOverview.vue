@@ -45,6 +45,9 @@
         </div>
       </dl>
 
+      <!-- 整机网卡流量（不同口径，由页面按需放入） -->
+      <slot name="host" />
+
       <!-- 四方向构成：同一内容经过两段路径时会各记一次 -->
       <div class="mt-6" data-testid="traffic-breakdown">
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

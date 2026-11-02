@@ -698,10 +698,14 @@ export type MetricType =
   | 'account_error_ratio'
   | 'account_temp_unscheduled_count'
   | 'overload_account_count'
+  | 'host_traffic_quota_used_percent'
+  | 'host_traffic_quota_projected_percent'
 export type Operator = '>' | '>=' | '<' | '<=' | '==' | '!='
 
 export interface AlertRule {
   id?: number
+  // 由其他功能托管的规则（如 host_traffic:usage_warning）只能在所属功能里修改。
+  managed_by?: string
   name: string
   description?: string
   enabled: boolean
