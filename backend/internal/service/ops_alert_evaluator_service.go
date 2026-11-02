@@ -32,6 +32,7 @@ return 0
 `)
 
 type OpsAlertEvaluatorService struct {
+	hostTraffic  *ServiceTrafficService
 	opsService   *OpsService
 	opsRepo      OpsRepository
 	emailService *EmailService
@@ -445,6 +446,11 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		return 0, false
 	}
 	switch strings.TrimSpace(rule.MetricType) {
+	case "host_traffic_quota_used_percent", "host_traffic_quota_projected_percent":
+		if s.hostTraffic == nil || s.hostTraffic.Host == nil || s.hostTraffic.HostCollector == nil {
+			return 0, false
+		}
+		return s.hostTraffic.Host.Metric(ctx, rule.MetricType, time.Now().UTC(), s.hostTraffic.HostCollector.Health())
 	case "cpu_usage_percent":
 		if systemMetrics != nil && systemMetrics.CPUUsagePercent != nil {
 			return *systemMetrics.CPUUsagePercent, true

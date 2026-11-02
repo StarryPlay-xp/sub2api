@@ -157,6 +157,30 @@ class HostUpdaterTests(unittest.TestCase):
             with self.assertRaisesRegex(updater.UpdateError, "mounts differ|bind source is missing"):
                 updater.Updater.check_compose(self.host, self.app)
 
+    def test_host_sys_recursive_bind_matches_inspect_and_rejects_drift(self):
+        model = {"services": {"sub2api": {"volumes": [
+            {"type": "bind", "source": "/opt/sub2api/data", "target": "/app/data"},
+            {"type": "bind", "source": "/sys", "target": "/host/sys", "read_only": True,
+             "bind": {"create_host_path": False}}]}}}
+        self.app["Mounts"].append({"Type": "bind", "Source": "/sys", "Destination": "/host/sys",
+                                   "RW": False, "Propagation": "rprivate", "Mode": "ro"})
+        with patch.object(updater, "command", return_value=json.dumps(model).encode()), \
+                patch.object(Path, "exists", lambda path: str(path) in ("/sys", "/opt/sub2api/data")):
+            updater.Updater.check_compose(self.host, self.app)
+            before = self.host.mounts(self.app)
+            # Recreated container retains the same externally visible bind.
+            recreated = json.loads(json.dumps(self.app))
+            self.assertEqual(before, self.host.mounts(recreated))
+            for field, value in [("RW", True), ("Source", "/sys/class/net")]:
+                changed = json.loads(json.dumps(self.app))
+                changed["Mounts"][-1][field] = value
+                self.assertNotEqual(before, self.host.mounts(changed))
+                with self.assertRaisesRegex(updater.UpdateError, "mounts differ"):
+                    updater.Updater.check_compose(self.host, changed)
+            self.app["Mounts"].pop()
+            with self.assertRaisesRegex(updater.UpdateError, "mounts differ"):
+                updater.Updater.check_compose(self.host, self.app)
+
     def test_compose_database_drift_rejected_before_mutation(self):
         model = {"services": {"sub2api": {"environment": {"DATABASE_HOST": "empty-database"}}}}
         with patch.object(updater, "command", return_value=json.dumps(model).encode()):

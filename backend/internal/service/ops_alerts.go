@@ -27,7 +27,7 @@ func (s *OpsService) CreateAlertRule(ctx context.Context, rule *OpsAlertRule) (*
 	if s.opsRepo == nil {
 		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
 	}
-	if rule == nil {
+	if rule == nil || strings.HasPrefix(strings.TrimSpace(rule.Name), "host_traffic:") {
 		return nil, infraerrors.BadRequest("INVALID_RULE", "invalid rule")
 	}
 
@@ -49,6 +49,12 @@ func (s *OpsService) UpdateAlertRule(ctx context.Context, rule *OpsAlertRule) (*
 		return nil, infraerrors.BadRequest("INVALID_RULE", "invalid rule")
 	}
 
+	if err := s.requireManualAlertRule(ctx, rule.ID); err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(strings.TrimSpace(rule.Name), "host_traffic:") {
+		return nil, infraerrors.BadRequest("INVALID_RULE", "reserved rule name")
+	}
 	updated, err := s.opsRepo.UpdateAlertRule(ctx, rule)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -68,6 +74,9 @@ func (s *OpsService) DeleteAlertRule(ctx context.Context, id int64) error {
 	}
 	if id <= 0 {
 		return infraerrors.BadRequest("INVALID_RULE_ID", "invalid rule id")
+	}
+	if err := s.requireManualAlertRule(ctx, id); err != nil {
+		return err
 	}
 	if err := s.opsRepo.DeleteAlertRule(ctx, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -229,4 +238,17 @@ func (s *OpsService) UpdateAlertEventEmailSent(ctx context.Context, eventID int6
 		return infraerrors.BadRequest("INVALID_EVENT_ID", "invalid event id")
 	}
 	return s.opsRepo.UpdateAlertEventEmailSent(ctx, eventID, emailSent)
+}
+
+func (s *OpsService) requireManualAlertRule(ctx context.Context, id int64) error {
+	rules, err := s.opsRepo.ListAlertRules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if r != nil && r.ID == id && r.ManagedBy != "" {
+			return infraerrors.Conflict("OPS_ALERT_RULE_MANAGED", "Change this rule through its owning configuration")
+		}
+	}
+	return nil
 }

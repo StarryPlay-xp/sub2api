@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/hosttraffic"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
 )
@@ -12,6 +14,8 @@ type ServiceTrafficRepository interface {
 	Report(context.Context, wgtunnel.TrafficWindow) (ServiceTrafficReport, error)
 }
 type ServiceTrafficService struct {
+	Host          *hosttraffic.Store
+	HostCollector *hosttraffic.Collector
 	Collector     *traffic.Collector
 	Store         ServiceTrafficRepository
 	Limits        BandwidthLimitRepository
@@ -22,6 +26,7 @@ type ServiceTrafficService struct {
 
 func (s *ServiceTrafficService) Close() {
 	if s != nil {
+		s.HostCollector.Close()
 		s.Collector.Close()
 	}
 }

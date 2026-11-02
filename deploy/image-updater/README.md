@@ -20,7 +20,7 @@
 2. 记录现有应用镜像 digest、Compose 项目名、所有数据挂载和数据库版本。备份现有数据库、应用数据目录、部署配置和密钥。不要用本仓库默认 Compose 文件覆盖现有部署。
 3. 将本目录 `updater.py` 安装为 `/usr/local/lib/sub2api-updater/updater.py`，所有者 root，权限 `0755`。将 service 文件安装为 `/etc/systemd/system/sub2api-updater.service`。
 4. 将 `compose.image-updater.yml` 放到现有部署目录；它只为应用增加更新 socket 和停止等待时间，不替换数据库配置。更新 socket 目录由更新服务创建，应用只有 socket 使用权，没有 Docker socket 或宿主机备份目录的访问权。
-5. 按实际路径填写 `/etc/sub2api-updater.json`，参考 `config.example.json`。`compose_files` 必须包括现有 Compose 文件、更新附加文件，以及已有的 WG 附加文件等；不包含自动生成的 `compose.image-version.json`，程序会自动追加它。
+5. 按实际路径填写 `/etc/sub2api-updater.json`，参考 `config.example.json`。`compose_files` 必须包括现有 Compose 文件、更新附加文件、本机流量附加文件 `compose.host-traffic.yml`（已有部署先按 [一次性开启步骤](../HOST_TRAFFIC_CN.md) 重建应用），以及已有的 WG 附加文件等；不包含自动生成的 `compose.image-version.json`，程序会自动追加它。
 6. `env_file` 指向原有 `.env`。如果部署没有使用 `.env`，可以创建独立空文件供本服务使用，不能覆盖现有环境文件。Compose、环境文件及父目录必须由 root 管理，不得允许普通应用用户修改。
 7. WG 密钥仍按 [WG 部署说明](../WIREGUARD_CN.md)配置。使用 `WIREGUARD_KEY_FILE` 环境变量，并将原密钥作为独立文件只读挂载，权限 `0400` 或 `0600`。已有密钥不能重新生成。更新器会单独备份这份文件，后台数据库备份不能代替它。
 8. 执行 `systemctl daemon-reload`、`systemctl enable --now sub2api-updater`。随后在维护窗口，把应用首次切换到本仓库已发布版本，并带上上述所有 Compose 附加文件；只重建 `sub2api` 服务。实际首次切换命令应根据核对过的服务器配置生成。

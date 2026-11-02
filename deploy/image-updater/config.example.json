@@ -3,7 +3,8 @@
   "project_name": "sub2api",
   "compose_files": [
     "/opt/sub2api/compose.yaml",
-    "/opt/sub2api/compose.image-updater.yml"
+    "/opt/sub2api/compose.image-updater.yml",
+    "/opt/sub2api/compose.host-traffic.yml"
   ],
   "env_file": "/opt/sub2api/.env",
   "state_directory": "/var/lib/sub2api-updater",

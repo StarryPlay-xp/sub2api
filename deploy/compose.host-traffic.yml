@@ -1,0 +1,14 @@
+# Install beside the base Compose file and include it in every Compose command.
+# Mount all of /sys so relative /sys/class/net symlinks resolve inside /host/sys.
+# Do not mount /proc or relabel the host's /sys with :z/:Z.
+services:
+  sub2api:
+    environment:
+      SUB2API_DEPLOYMENT: docker
+    volumes:
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          create_host_path: false

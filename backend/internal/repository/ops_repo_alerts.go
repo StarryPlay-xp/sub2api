@@ -33,7 +33,8 @@ SELECT
   filters,
   last_triggered_at,
   created_at,
-  updated_at
+  updated_at,
+  COALESCE(managed_by, '')
 FROM ops_alert_rules
 ORDER BY id DESC`
 
@@ -65,6 +66,7 @@ ORDER BY id DESC`
 			&lastTriggeredAt,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
+			&rule.ManagedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -221,7 +223,7 @@ SET
   notify_email = $12,
   filters = $13,
   updated_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND managed_by IS NULL
 RETURNING
   id,
   name,
@@ -303,7 +305,7 @@ func (r *opsRepository) DeleteAlertRule(ctx context.Context, id int64) error {
 		return fmt.Errorf("invalid id")
 	}
 
-	res, err := r.db.ExecContext(ctx, "DELETE FROM ops_alert_rules WHERE id = $1", id)
+	res, err := r.db.ExecContext(ctx, "DELETE FROM ops_alert_rules WHERE id = $1 AND managed_by IS NULL", id)
 	if err != nil {
 		return err
 	}

@@ -22,8 +22,16 @@ services:
     ports:
       - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
+      # Local host traffic counters; never mount the host's /proc.
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          create_host_path: false
       - ./data:/app/data:Z
     environment:
+      - SUB2API_DEPLOYMENT=docker
       - AUTO_SETUP=true
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080

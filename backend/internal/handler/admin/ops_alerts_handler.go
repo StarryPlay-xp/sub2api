@@ -17,6 +17,8 @@ import (
 )
 
 var validOpsAlertMetricTypes = []string{
+	"host_traffic_quota_used_percent",
+	"host_traffic_quota_projected_percent",
 	"success_rate",
 	"error_rate",
 	"upstream_error_rate",

@@ -37,12 +37,20 @@ services:
     ports:
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
+      # Local host traffic counters; never mount the host's /proc.
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          create_host_path: false
       # Local directory mapping for easy migration
       - ./data:/app/data:Z
       # Optional: Mount custom config.yaml (uncomment and create the file first)
       # Copy config.example.yaml to config.yaml, modify it, then uncomment:
       # - ./config.yaml:/app/data/config.yaml
     environment:
+      - SUB2API_DEPLOYMENT=docker
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
       # =======================================================================

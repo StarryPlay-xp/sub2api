@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/hosttraffic"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/wgtunnel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -20,7 +21,8 @@ func ProvideServiceTraffic(db *sql.DB, gateway *service.OpenAIGatewayService) *s
 	store := &ServiceTrafficStore{DB: db}
 	collector := traffic.NewCollector(store)
 	gateway.SetTrafficMeter(collector.Meter)
-	return &service.ServiceTrafficService{Collector: collector, Store: store, Subjects: store, Egress: store, Limits: &BandwidthLimitStore{DB: db}}
+	host := &hosttraffic.Store{DB: db}
+	return &service.ServiceTrafficService{Host: host, HostCollector: hosttraffic.Start(host), Collector: collector, Store: store, Subjects: store, Egress: store, Limits: &BandwidthLimitStore{DB: db}}
 }
 func (s *ServiceTrafficStore) Save(ctx context.Context, c traffic.Snapshot) error {
 	if c.RuntimeID == "" || c.StartedAt.IsZero() || c.At.Before(c.StartedAt) {

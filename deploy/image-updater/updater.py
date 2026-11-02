@@ -200,6 +200,8 @@ class Updater:
 
     @staticmethod
     def mounts(container):
+        # Docker inspect exposes one bind entry for /sys; recursive kernel
+        # submounts are not separate Mounts entries. Preserve strict equality.
         return sorted((m["Destination"], m["Type"], m["Source"], m["RW"]) for m in container["Mounts"])
 
     @staticmethod
