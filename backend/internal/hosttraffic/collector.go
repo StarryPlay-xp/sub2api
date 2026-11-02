@@ -118,6 +118,15 @@ func (r Reader) Read(at time.Time) Sample {
 			continue
 		}
 		base := r.path(filepath.Join(root, name))
+		// sysfs can also expose class control files such as bonding_masters.
+		// Network interfaces are directories (usually reached through symlinks).
+		info, statErr := os.Stat(base)
+		if statErr != nil {
+			return fail("counter_read_failed")
+		}
+		if !info.IsDir() {
+			continue
+		}
 		readNum := func(p string) (string, error) {
 			b, e := os.ReadFile(filepath.Join(base, p))
 			if e != nil {

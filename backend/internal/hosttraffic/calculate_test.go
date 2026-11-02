@@ -258,3 +258,22 @@ func TestHostTrafficLinuxReaderUsesMountedCountersAndMinuteLabels(t *testing.T) 
 	require.Equal(t, []string{"eth0"}, names)
 	require.False(t, selection.Ambiguous)
 }
+
+func TestHostTrafficSkipsSysfsClassControlFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(path, value string) {
+		name := filepath.Join(root, path)
+		require.NoError(t, os.MkdirAll(filepath.Dir(name), 0755))
+		require.NoError(t, os.WriteFile(name, []byte(value), 0600))
+	}
+	write("proc/sys/kernel/random/boot_id", "00000000-0000-4000-8000-000000000001")
+	write("proc/uptime", "3600.00 0.00")
+	write("host/sys/class/net/bonding_masters", "")
+	write("host/sys/class/net/eth0/ifindex", "2")
+	write("host/sys/class/net/eth0/statistics/rx_bytes", "100")
+	write("host/sys/class/net/eth0/statistics/tx_bytes", "200")
+	result := (Reader{Root: root, OS: "linux", Deployment: "docker"}).Read(time.Now())
+	require.Equal(t, "ok", result.Collection.State)
+	require.Len(t, result.Readings, 1)
+	require.Equal(t, "eth0", result.Readings[0].Name)
+}
