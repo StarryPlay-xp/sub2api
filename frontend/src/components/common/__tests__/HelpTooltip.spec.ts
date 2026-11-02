@@ -107,4 +107,44 @@ describe('HelpTooltip', () => {
 
     wrapper.unmount()
   })
+
+  it('positions against the viewport even when the page is scrolled', async () => {
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: { content: 'scrolled details' },
+    })
+    const trigger = wrapper.get('.group')
+    trigger.element.getBoundingClientRect = () =>
+      ({ top: 300, bottom: 316, left: 100, right: 116, width: 16, height: 16, x: 100, y: 300, toJSON: () => ({}) }) as DOMRect
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 2000 })
+
+    await trigger.trigger('mouseenter')
+    await nextTick()
+    const tooltip = getTooltipElement()
+    // fixed 定位：顶部为图标顶部减去间距，不叠加页面滚动距离。
+    expect(tooltip.style.top).toBe('292px')
+    expect(tooltip.style.left).toBe('108px')
+    expect(tooltip.dataset.placement).toBe('top')
+
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
+    wrapper.unmount()
+  })
+
+  it('flips below the trigger when there is no room above', async () => {
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: { content: 'top edge details' },
+    })
+    const trigger = wrapper.get('.group')
+    trigger.element.getBoundingClientRect = () =>
+      ({ top: 4, bottom: 20, left: 100, right: 116, width: 16, height: 16, x: 100, y: 4, toJSON: () => ({}) }) as DOMRect
+    const tooltip = getTooltipElement()
+    Object.defineProperty(tooltip, 'offsetHeight', { configurable: true, value: 60 })
+
+    await trigger.trigger('mouseenter')
+    await nextTick()
+    expect(tooltip.dataset.placement).toBe('bottom')
+    expect(tooltip.style.top).toBe('28px')
+    wrapper.unmount()
+  })
 })
