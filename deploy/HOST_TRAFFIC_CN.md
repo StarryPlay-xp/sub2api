@@ -15,9 +15,9 @@
 
 这一步会短暂重建 **sub2api 应用容器**，中断当时的请求。数据库和 Redis 不重建，不删除卷。建议在业务低峰操作，并先确认现有备份可用。
 
-1. 把本仓库的 `deploy/compose.host-traffic.yml` 放到实际部署目录，文件名保持 `compose.host-traffic.yml`。使用与现有 Compose 文件一致的受控所有者和权限；更新器要求配置文件由 root 管理且不能被普通用户改写。
+1. 把本仓库的 `deploy/compose.host-traffic.yml` 放到实际部署目录，文件名保持 `compose.host-traffic.yml`。使用与现有 Compose 文件一致的受控所有者和权限；更新器要求配置文件由 root 管理且不能被普通用户改写。先确认后台没有进行中的升级任务；有任务时等待结束，不要中途停止服务。确认空闲后执行 `sudo systemctl stop sub2api-updater`，停止更新器，避免维护期间有人触发升级。
 2. 备份 `/etc/sub2api-updater.json`，在其中 `compose_files` 数组的末尾追加新附加文件的**绝对路径**。保留原有主文件、更新服务附加文件、WireGuard 附加文件及其他已有覆盖文件，保持原顺序。不要覆盖成示例配置。不要把自动生成的 `compose.image-version.json` 写入该数组。
-3. 以 root 在本机运行下面的检查与重建命令。它从现有更新器配置读取目录、项目名、环境文件和完整文件列表，并保留更新器生成的版本覆盖文件。请先确保更新器当前没有进行升级；升级进行中时停止操作，等升级结束后再执行。
+3. 以 root 在本机运行下面的检查与重建命令。它从现有更新器配置读取目录、项目名、环境文件和完整文件列表，并保留更新器生成的版本覆盖文件。脚本要求更新器已停止；挂载检查和更新器预检查通过后，才重新启动更新器加载新配置。更新器没有配置热重载，只修改 JSON 不会让运行中的进程使用新文件列表。
 
 ```bash
 sudo python3 - <<'PY'
@@ -28,6 +28,10 @@ import subprocess
 
 if os.geteuid() != 0:
     raise SystemExit('请以 root 执行')
+service = subprocess.run(['systemctl', 'is-active', 'sub2api-updater'],
+                         capture_output=True, text=True, check=False)
+if service.stdout.strip() != 'inactive':
+    raise SystemExit('请先确认无升级任务并停止更新器；状态异常时停止操作')
 cfg = json.loads(Path('/etc/sub2api-updater.json').read_text())
 root = Path(cfg['project_directory'])
 files = [Path(p) for p in cfg['compose_files']]
@@ -58,16 +62,22 @@ info = json.loads(subprocess.check_output(
 if not any(m['Destination'] == '/host/sys' and m['Source'] == '/sys'
            and m['Type'] == 'bind' and not m['RW'] for m in info['Mounts']):
     raise SystemExit('挂载校验失败，不要继续执行后台升级')
-print('只读挂载已配置；等待应用健康后，在流量监控页检查采集状态。')
+# --check 读取新配置并检查完整挂载；会初始化更新器状态目录，但不升级镜像。
+# 检查失败则保持更新器停止，不会继续启动或自动回滚应用。
+subprocess.run(['python3', '/usr/local/lib/sub2api-updater/updater.py',
+                '--config', '/etc/sub2api-updater.json', '--check'], check=True)
+subprocess.run(['systemctl', 'start', 'sub2api-updater'], check=True)
+subprocess.run(['systemctl', 'is-active', '--quiet', 'sub2api-updater'], check=True)
+print('挂载已检查，更新器已重新加载配置；等待应用健康后检查采集状态。')
 PY
 ```
 
 4. 等应用恢复健康，再等到下一个整分钟。采集应从 `starting` 进入 `ok`，来源为 `host_mount`。首次没有确定的默认出口时，在套餐表单里选计费网卡；Docker 下 `default_route` 是 `null`，这属于正常行为。
-5. 确认更新器仍使用包含新附加文件的完整列表。以后的普通镜像升级会保留挂载，无需重复操作。更新器会拒绝“配置声明了新挂载、旧容器却未重建”的状态。
+5. 确认脚本的预检查和更新器启动均成功，后台显示更新服务可用，且应用恢复健康后再允许后台升级。以后的普通镜像升级会保留挂载，无需重复操作。更新器会拒绝“配置声明了新挂载、旧容器却未重建”以及“进程仍使用旧文件列表、容器已有新挂载”两种状态。
 
 没有使用 image-updater 时，也要把新附加文件加入日常使用的全部 Compose 命令，并用 `up -d --no-deps --force-recreate sub2api` 重建应用。不要使用 `down -v`、删除数据目录或换一套项目名。
 
-若失败，停止继续升级；恢复备份的配置文件和原完整 Compose 文件列表，再只重建应用容器。这里不涉及数据库版本回退。
+若失败，停止继续升级并保持更新器停止。需要恢复时，先恢复备份的配置文件和原完整 Compose 文件列表，再只重建应用容器；应用恢复健康后，用恢复后的配置运行上述 `updater.py --config /etc/sub2api-updater.json --check`，通过后执行 `sudo systemctl start sub2api-updater` 重新加载配置。预检查失败时不要启动更新器。这里不涉及数据库版本回退。
 
 ## 二进制 + systemd
 

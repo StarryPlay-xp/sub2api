@@ -85,6 +85,7 @@ func summarize(spans []Span, names []string, start, end time.Time) summary {
 	}
 	type interval struct{ a, b time.Time }
 	intervals := map[string][]interval{}
+	minorGaps := map[string][]interval{}
 	first := map[string]time.Time{}
 	last := map[string]time.Time{}
 	for _, s := range spans {
@@ -94,6 +95,7 @@ func summarize(spans []Span, names []string, start, end time.Time) summary {
 		if s.GapFrom != nil && s.GapTo != nil && s.GapTo.After(start) && s.GapFrom.Before(end) {
 			if s.Minor > 0 {
 				restarts[*s.GapTo] = true
+				minorGaps[s.Name] = append(minorGaps[s.Name], interval{*s.GapFrom, *s.GapTo})
 			} else {
 				a, b := *s.GapFrom, *s.GapTo
 				if a.Before(start) {
@@ -180,7 +182,16 @@ func summarize(spans []Span, names []string, start, end time.Time) summary {
 		}
 		if last[name].Before(end) {
 			tail := int64(end.Sub(last[name]).Seconds())
-			if tail > 120 || out.minor == 0 {
+			// Only a proven restart gap on this interface covering this entire
+			// tail is exempt, never an unrelated restart elsewhere in the period.
+			minorTail := false
+			for _, gap := range minorGaps[name] {
+				if !gap.a.After(last[name]) && !gap.b.Before(end) {
+					minorTail = true
+					break
+				}
+			}
+			if !minorTail {
 				out.uncertain = true
 				out.lost = max(out.lost, tail)
 			}

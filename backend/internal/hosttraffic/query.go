@@ -28,6 +28,7 @@ func status(snap *snapshot, now time.Time, health Collection) Status {
 	rs := readings(state)
 	names, selection := selectInterfaces(rs, state.Plan)
 	result.Selection = selection
+	result.metricReady = ready(snap, names, now)
 	selected := map[string]bool{}
 	for _, n := range names {
 		selected[n] = true
@@ -62,6 +63,7 @@ func status(snap *snapshot, now time.Time, health Collection) Status {
 		}
 		if until.Before(start) {
 			until = start
+			result.metricReady = false
 		}
 		result.Period = makePeriod(*state.Plan, start, end, until, snap.spans, names, snap.calibrations)
 		if len(names) == 0 || !ready(snap, names, now) {
@@ -182,7 +184,7 @@ func (s *Store) Detail(ctx context.Context, now time.Time) (Detail, error) {
 // period's event. Unavailable collection yields no value, never a false recovery.
 func (s *Store) Metric(ctx context.Context, metric string, now time.Time, health Collection) (float64, bool) {
 	st, e := s.Status(ctx, now, health)
-	if e != nil || st.Period == nil || st.Collection.State != "ok" || st.Selection.Ambiguous {
+	if e != nil || st.Period == nil || st.Collection.State != "ok" || st.Selection.Ambiguous || !st.metricReady {
 		return 0, false
 	}
 	if metric == "host_traffic_quota_used_percent" {

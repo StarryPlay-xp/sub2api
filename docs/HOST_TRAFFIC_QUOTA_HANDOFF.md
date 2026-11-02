@@ -35,7 +35,7 @@
 - `since_start`：`{from,rx_bytes,tx_bytes,total_bytes,bound}` 或 null；只累加首次保存读数之后的变化，累计值独立于历史保留，不随清理归零；`bound=exact/lower`。
 - `plan`：下述套餐或 null。
 - `period`：下述当前账期或 null；没有套餐时为 null。
-- `alerts`：`{email_enabled,firing:[{level,kind,since}]}`，`level=warning/critical`，`kind=usage/projection`。列出本功能托管规则的真实 firing 事件；手动规则仍在运维告警页显示。采集与告警评估异步，阈值变化/跨期后的事件会在下次告警评估时恢复。
+- `alerts`：`{email_enabled,firing:[{level,kind,since}]}`，`level=warning/critical`，`kind=usage/projection`。列出本功能托管规则的真实 firing 事件；手动规则仍在运维告警页显示。采集与告警评估异步，阈值变化/跨期后的事件会在选定网卡读数可用后的下一次告警评估时恢复。
 - `unit_hint`：`{suggested_base:1000|1024,samples:2}` 或 null。
 
 ### 套餐与账期
@@ -44,7 +44,7 @@
 
 - `quota_value` 使用不带符号、不带指数的十进制字符串，最多 9 位小数；额度只接受 GB/TB，换算后必须大于 0、最多为有符号 64 位整数上限。字节换算向下取整。
 - `billing_mode=both/outbound/inbound/max`；VPS 视角 `rx=入站`、`tx=出站`。`max` 是所选网卡本期 rx 合计与 tx 合计的较大值，不是逐分钟 max 的和。
-- `reset_day=1..31`；`reset_time=HH:MM` 且分钟为 00/15/30/45；`timezone` 必须是可加载的 IANA 名称，拒绝 `Local`。程序内置 `time/tzdata`。
+- `reset_day=1..31`；`reset_time` 严格要求补零的 `HH:MM`，分钟为 00/15/30/45，例如 `01:15`。`1:15` 等非规范输入返回 `HOST_TRAFFIC_PLAN_INVALID`、`metadata.field=reset_time`；边界计算使用解析后的小时和分钟。旧版本已保存的单数字小时仍按其原始时间含义读取，再次保存时需补零；不自动修改已有数据库记录或关闭快照。`timezone` 必须是可加载的 IANA 名称，拒绝 `Local`。程序内置 `time/tzdata`。
 - 月份不足指定日时取该月末日，下一月仍按原 reset_day 推算。夏令时采用 Go 时区数据库的 `time.Date` 解析规则；涉及跳时/重复时刻的套餐应优先选服务商明确的非跳变时刻或 UTC。
 - `interfaces=[]` 自动选择；手动列表最多 16 项，不允许重复或明确排除的虚拟网卡名称。
 - `alerts={enabled,warning_percent,critical_percent,projection}`，校验 `0 < warning < critical <= 1000`，允许设置超过 100% 的严重阈值。
@@ -74,7 +74,7 @@
 | `HOST_TRAFFIC_PLAN_CONFLICT` | 409 | 创建/更新 version 不匹配，或校准 plan_version 已过期 |
 | `HOST_TRAFFIC_PLAN_INVALID` | 400 | metadata.field：quota/billing_mode/reset_day/reset_time/timezone/unit_base/interfaces/alerts/current_used；结构解析错误使用 quota |
 | `HOST_TRAFFIC_NO_PLAN` | 409 | 无套餐却请求校准 |
-| `HOST_TRAFFIC_NOT_READY` | 409 | 缺少可用的近期读数；携带 current_used 的 PUT 同样整体失败 |
+| `HOST_TRAFFIC_NOT_READY` | 409 | 校准缺少可用的近期读数，或编辑套餐时旧账期边界读数尚未持久化；PUT 整体失败，套餐/version、校准和告警规则均保留原值 |
 | `HOST_TRAFFIC_CALIBRATION_INVALID` | 400 | 校准金额、单位、mode 或请求结构错误 |
 | `OPS_ALERT_RULE_MANAGED` | 409 | 在普通运维规则接口修改/删除托管规则；应改套餐配置 |
 
@@ -96,16 +96,17 @@ periods 最多 12 条，新的在前，包含约定的账期字段、`billing_mo
 4. **无法分配的区间不摊分。** 中断横跨账期、usage 起点或日界线时，无法知道区间内部的分布。整个跨界差值从该窗口实测中排除；账期通过 unallocated_bytes 提示。同一个跨期区间可能在两期都提示，不能把提示值跨期相加当作计费。初次读数追溯至开机且开机在本期前时，不把整段开机以来的量当成中断缺口。
 5. **明细日合计可能低于账期合计。** 开机以来的首个读数、同账期内停采后的恢复量可能跨日；账期归属已知但每日分布未知，不按时间比例虚构每日流量。daily billed 只含当天可归属的实测，不摊入 adjustment；`max` 也使逐日 max 的和不等于账期 max。
 6. **自动选择保守。** 原生路由只有一个地址族有唯一默认出口时可选该网卡；两个地址族都有出口时必须一致。宿主机挂载模式只在唯一候选且有 device 特征时自动选择，其他情况 ambiguous。Docker 默认路由一律 null。
-7. **套餐编辑保留口径隔离。** 保存时先冻结旧套餐已结束账期，再用新套餐重算当前账期。调整额度、告警或显示进制不改变已有字节 adjustment；改变账期边界、计费方向或所选网卡后，旧校准仅保留在历史，不再参与当前口径计算。旧关闭记录永不改写。
+7. **套餐编辑保留口径隔离。** 保存时先冻结旧套餐已结束账期，再用新套餐重算当前账期。冻结必须有不早于账期结束的已持久化采样，不能仅凭请求时间判定；边界读数尚在缓冲、尚未采集或保存失败时，即使 PUT 不带 current_used 也返回 `409 HOST_TRAFFIC_NOT_READY`，整个事务回滚，保留旧套餐及游标。采集恢复后按旧套餐完成结算，再用原 version 重试保存（若其他管理员已经修改则仍需刷新版本）。调整额度、告警或显示进制不改变已有字节 adjustment；改变账期边界、计费方向或所选网卡后，旧校准仅保留在历史，不再参与当前口径计算。旧关闭记录永不改写。
 8. **预警等级内部映射。** 现有邮件系统将 P0 识别为 critical、P1 为 warning，托管规则使用此映射；本机状态接口仍使用约定的 warning/critical。usage 两级规则使用 `>=`，projection 在达到预测额度 100% 时提醒。
-9. **projection 缺省与恢复。** 至少观测三天才预测；基于最近至多七天可归属的实测日均速率。当前 bound=lower 时预测也应作为下限显示。没有预测时，告警指标按零处理以恢复上一账期的预测事件；采集不可用时不产生有效指标，避免误报“恢复”。
+9. **projection 缺省与恢复。** 至少观测三天才预测；基于最近至多七天可归属的实测日均速率。当前 bound=lower 时预测也应作为下限显示。只有全部选定网卡具备最近三分钟内、同一分钟且属于当前账期的读数时，缺省预测才作为零处理以恢复上一账期事件。整体采集故障、计费网卡缺失或读数仍在上一账期时，两类告警都不产生有效指标，不创建或恢复事件；其他网卡仍正常采集、collection.state=ok 也不能绕过此检查。历史缺口导致的 lower，在当前读数完整时仍可触发预警。
 10. **额外兼容字段。** 运维规则列表新增可选 managed_by，days basis/expected 语义如上，其他接口字段名及主要错误码均保持原契约。
 
 ## 存储、保留与运行
 
 - 原始绝对读数：7 天，每整小时执行清理；每小时每网卡差值分段：13 个日历月，按 UTC 小时截断边界清理。
 - 永久保留最近读数游标、首次采集时间和 since_start 累计，不因 7 天清理破坏重启恢复。关闭账期、校准记录不自动删除；接口只取最近 12/20 条展示。
-- 关闭发生在跨期后下一次成功采样保存时，长时间停采则恢复后补冻结；已关闭快照使用唯一键 `ON CONFLICT DO NOTHING`，不会被新配置重算。
+- 关闭发生在跨期后下一次成功采样保存时，或读数已经越过边界后的套餐编辑事务中；长时间停采则恢复后补冻结。精确边界读数归入旧账期，中断跨界恢复量仍记为 unallocated。已关闭快照使用唯一键 `ON CONFLICT DO NOTHING`，不会被新配置重算；本次修复也不会自动修复此前可能已少计的关闭记录。
+- minor_restarts 只豁免有明确起止时间的同网卡重启缺口。期内其他时间或其他网卡的轻微重启，不能豁免账期尾部缺失；无法证明的尾部缺口计入 lost_seconds，bound 降为 lower。
 - 数据库不可用时进程内最多缓冲 180 个分钟批次；超出丢最旧批次，同阶段累计仍由后续绝对计数补回，跨界不可归属部分保持 lower。退出时停止采集器，未保存内存队列不保证持久化。
 - 原始计数按 boot_id、网卡名、ifindex、分钟唯一存储；计数下降立即以新读数作后续差值基线，绝不产生负流量；同一网卡只有一个方向下降时，另一个方向只计其增量，防止重复计费。
 - 托管规则 managed_by 为 `host_traffic:usage_warning/usage_critical/projection`；这些名称前缀为保留字。三条规则在保存套餐时一起 upsert，手动规则不改动。停用托管规则会恢复其 firing 事件。
@@ -117,9 +118,18 @@ periods 最多 12 条，新的在前，包含约定的账期字段、`billing_mo
 
 部署测试验证 Compose 文件中的只读挂载，以及升级器对模拟 Docker inspect 的匹配、可写/错源/缺失挂载拒绝。Docker inspect 中预期 `/sys` 只有一条顶层 bind 项，递归子挂载不另列；保留升级器原有严格比较，不放宽挂载检查。
 
+审查修复回归位于 `backend/internal/hosttraffic/regression_test.go`：覆盖跨期保存（含 current_used）回滚、精确边界补齐与跨界恢复量、恢复后原版本重试、严格时间格式及旧格式读取、选定网卡缺失/过期/前一期读数阻止告警恢复，以及重启缺口的局部豁免。现有 sysfs 控制文件过滤修复及测试保留。`deploy/tests/host-traffic-guide-test.py` 直接提取部署文档中的 Python 脚本，以模拟命令验证完整 Compose 列表、镜像覆盖文件、预检查后启动顺序，以及更新器未停/挂载异常/预检查失败时停止后续操作；不会执行真实 Docker、systemd 或数据库操作。
+
 本次不连接或操作任何服务器，不发送真实邮件，不 push。仍需用户另行授权：真实 PostgreSQL 迁移/事务及历史恢复、Linux Docker 网卡可读性、容器 boot_id/uptime 与宿主机一致性、实际 updater 升级、宿主机重启连续性、服务商对账、邮件送达和生产规模性能测试。静态系统调用路径检查不能替代 systemd/Docker 实机验收。
 
-已执行的本地检查：
+2026-11-02 审查修复后的本轮离线验证：
+
+- `go test -race -tags=unit ./internal/hosttraffic ./internal/handler/admin ./internal/service -run 'TestHostTraffic|TestComputeRuleMetric|Test.*(ServiceTraffic|Bandwidth)' -count=1` 通过；补充跨多个账期事务回滚用例后，hosttraffic 全包竞态测试再次通过。
+- `golangci-lint run ./internal/hosttraffic` 为 0 issues；Linux amd64、CGO_ENABLED=0 后端编译通过，编译结果和独立缓存均放在临时目录。
+- `PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/host-traffic-guide-test.py -v` 的 4 项文档脚本模拟测试、`host-traffic-compose-test.py` 的 2 项检查、image-updater 原有 15 项离线测试通过。
+- 本轮未修改迁移文件、连接数据库、重建或重启验收环境；未推送。已有前端工作及 sysfs 过滤修复保持，由用户确认后另行刷新环境。
+
+原始实现阶段已执行的本地检查（以下不表示本轮重新进行了环境验收）：
 
 - `go test -race -tags=unit ./internal/hosttraffic ./internal/handler/admin ./internal/service` 的本功能、流量/带宽、既有告警指标筛选测试通过。
 - 仓库 golangci-lint 对本次变更检查为 0 issues。

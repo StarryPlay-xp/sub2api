@@ -263,6 +263,12 @@ func closePeriods(ctx context.Context, tx *sql.Tx, snap *snapshot, now time.Time
 		if !end.After(start) {
 			return errors.New("invalid host traffic period")
 		}
+		// Wall-clock time alone cannot close a period: the boundary reading may
+		// still be queued. Returning an error also rolls back earlier freezes in
+		// this transaction, preserving the old plan and cursor for a later retry.
+		if snap.state.Last == nil || snap.state.Last.Before(end) {
+			return ErrNotReady
+		}
 		period := makePeriod(*p, start, end, end, snap.spans, names, snap.calibrations)
 		closed := ClosedPeriod{Period: *period, BillingMode: p.BillingMode, ClosedAt: now}
 		raw, e := json.Marshal(closed)

@@ -144,7 +144,7 @@ func TestHostTrafficClosedPeriodIsImmutable(t *testing.T) {
 	p := testPlan(t)
 	start := instant("2026-10-01T00:00:00Z")
 	end := instant("2026-11-01T00:00:00Z")
-	stateRow(m, persisted{Plan: p, ActiveStart: &start}, true)
+	stateRow(m, persisted{Plan: p, ActiveStart: &start, Last: &end}, true)
 	// A repeated freeze must not update an existing closed record.
 	m.ExpectExec("INSERT INTO host_traffic_periods VALUES.*ON CONFLICT DO NOTHING").WithArgs(start, end, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectExec("UPDATE host_traffic_state").WillReturnResult(sqlmock.NewResult(0, 1))

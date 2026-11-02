@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"regexp"
 	"sort"
-	"strconv"
 	"time"
 	_ "time/tzdata"
 
@@ -159,6 +158,8 @@ type Status struct {
 	Period     *Period     `json:"period"`
 	Alerts     Alerts      `json:"alerts"`
 	UnitHint   *UnitHint   `json:"unit_hint"`
+	// Internal freshness gate; never exposed in the HTTP response.
+	metricReady bool
 }
 type Calibration struct {
 	ID int64 `json:"id"`
@@ -245,7 +246,7 @@ func (in PlanInput) Validate() (*Plan, error) {
 		return nil, invalid("reset_day")
 	}
 	t, e := time.Parse("15:04", in.ResetTime)
-	if e != nil || t.Minute()%15 != 0 {
+	if e != nil || t.Format("15:04") != in.ResetTime || t.Minute()%15 != 0 {
 		return nil, invalid("reset_time")
 	}
 	if in.Timezone == "" || in.Timezone == "Local" {
@@ -284,9 +285,8 @@ func (p Plan) boundary(year int, month time.Month) time.Time {
 	monthStart := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	last := monthStart.AddDate(0, 1, -1).Day()
 	day := min(p.ResetDay, last)
-	h, _ := strconv.Atoi(p.ResetTime[:2])
-	m, _ := strconv.Atoi(p.ResetTime[3:])
-	return time.Date(monthStart.Year(), monthStart.Month(), day, h, m, 0, 0, loc).UTC()
+	reset, _ := time.Parse("15:04", p.ResetTime)
+	return time.Date(monthStart.Year(), monthStart.Month(), day, reset.Hour(), reset.Minute(), 0, 0, loc).UTC()
 }
 func (p Plan) Bounds(now time.Time) (time.Time, time.Time) {
 	loc, _ := time.LoadLocation(p.Timezone)
