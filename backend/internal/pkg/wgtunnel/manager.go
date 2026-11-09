@@ -34,12 +34,16 @@ type retiredRuntime struct {
 }
 
 type managedRuntime struct {
-	runtime *Runtime
-	meter   *Meter
-	id      string
-	version int64
-	rate    Rate
-	renew   chan struct{}
+	runtime         *Runtime
+	meter           *Meter
+	id              string
+	version         int64
+	rate            Rate
+	renew           chan struct{}
+	leaseMu         sync.Mutex
+	leaseDeadline   time.Time
+	leaseExpired    bool
+	controlDegraded bool
 }
 
 // Manager is per-process and owns the only network runtime for each node.
@@ -74,7 +78,22 @@ func (m *Manager) Acquire(ctx context.Context, id int64) (*Runtime, int64, strin
 	if ctx.Err() != nil {
 		return nil, 0, "", ctx.Err()
 	}
-	if err != nil || !n.Active || n.Paused || (n.ExpiresAt != nil && !n.ExpiresAt.After(time.Now())) {
+	if err != nil {
+		// A caller still fails closed, but a transient database read failure must
+		// not retire another request's runtime while its confirmed lease is valid.
+		if current := m.nodes[id]; current != nil && !controlPlaneRejected(err) && current.hasLease() {
+			if current.leaseValid(time.Now()) {
+				return nil, 0, "", ErrBlocked
+			}
+			// Keep expiry latched even when this read error wins the race with
+			// validation; retiring alone would permit a fresh claim on recovery.
+			m.failed[id] = current.version
+			go m.persistFailure(id, current.version)
+		}
+		m.retireLocked(id)
+		return nil, 0, "", ErrBlocked
+	}
+	if !n.Active || n.Paused || (n.ExpiresAt != nil && !n.ExpiresAt.After(time.Now())) {
 		m.retireLocked(id)
 		return nil, 0, "", ErrBlocked
 	}
@@ -82,6 +101,9 @@ func (m *Manager) Acquire(ctx context.Context, id int64) (*Runtime, int64, strin
 		return nil, 0, "", ErrBlocked
 	}
 	if current := m.nodes[id]; current != nil {
+		if !current.leaseValid(time.Now()) {
+			current.runtime.Close()
+		}
 		if current.version == n.Version && current.runtime.ctx.Err() == nil {
 			return current.runtime, n.Version, current.id, nil
 		}
@@ -121,10 +143,18 @@ func (m *Manager) Acquire(ctx context.Context, id int64) (*Runtime, int64, strin
 		return nil, 0, "", ErrBlocked
 	}
 	rid := hex.EncodeToString(b)
+	leaseStarted := time.Now()
+	_, leased := m.store.(RuntimeStore)
 	if lifecycle, ok := m.store.(RuntimeStore); ok {
 		if err = lifecycle.ClaimRuntime(ctx, id, n.Version, rid); err != nil {
 			return nil, 0, "", ErrBlocked
 		}
+	}
+	if leased && !time.Now().Before(leaseStarted.Add(runtimeLeaseGrace)) {
+		// Never start UDP on a grant whose acknowledgement arrived too late.
+		m.failed[id] = n.Version
+		go m.persistFailure(id, n.Version)
+		return nil, 0, "", ErrBlocked
 	}
 	r, err := Start(ctx, cfg)
 	if err != nil {
@@ -136,9 +166,19 @@ func (m *Manager) Acquire(ctx context.Context, id int64) (*Runtime, int64, strin
 		return nil, 0, "", ErrBlocked
 	}
 	current := &managedRuntime{runtime: r, meter: NewMeter(&r.Counts, time.Now()), id: rid, version: n.Version, rate: Rate{State: "warming_up"}, renew: make(chan struct{}, 1)}
+	if leased {
+		// Anchor to the start of the database operation, never a delayed reply.
+		current.leaseDeadline = leaseStarted.Add(runtimeLeaseGrace)
+	}
 	m.nodes[id] = current
-	if _, ok := m.store.(RuntimeStore); ok {
-		go current.leaseWatchdog()
+	if leased {
+		if !current.leaseValid(time.Now()) {
+			m.failed[id] = n.Version
+			m.retireLocked(id)
+			go m.persistFailure(id, n.Version)
+			return nil, 0, "", ErrBlocked
+		}
+		go current.leaseWatchdog(id)
 	}
 	return r, n.Version, rid, nil
 }
@@ -167,23 +207,32 @@ func (m *Manager) Close() { m.cancel(); <-m.done }
 func (m *Manager) loop() {
 	defer close(m.done)
 	// Store latency must not stretch a normal one-second sample into a multi-
-	// second average. Validation and persistence run on their own bounded loop.
+	// second average. Persistence must also never delay lease renewal.
 	maintained := make(chan struct{})
 	go func() {
 		defer close(maintained)
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
-		ticks := 0
 		for {
 			select {
 			case <-m.ctx.Done():
 				return
 			case <-ticker.C:
 				m.validateRuntimes()
-				ticks++
-				if ticks%5 == 0 {
-					m.flush()
-				}
+			}
+		}
+	}()
+	persisted := make(chan struct{})
+	go func() {
+		defer close(persisted)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+				m.flush()
 			}
 		}
 	}()
@@ -200,6 +249,7 @@ func (m *Manager) loop() {
 			m.mu.Unlock()
 		case <-m.ctx.Done():
 			<-maintained
+			<-persisted
 			m.mu.Lock()
 			for id := range m.nodes {
 				m.retireLocked(id)
@@ -227,10 +277,12 @@ func (m *Manager) flush() {
 	}
 	m.mu.Unlock()
 	for _, p := range items {
+		started := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		err := m.store.SaveCheckpoint(ctx, p.c, p.gap)
 		cancel()
 		if err != nil {
+			logControlEvent("wireguard.checkpoint_failed", p.c.NodeID, p.c.Version, "checkpoint", err, time.Since(started))
 			continue
 		}
 		if p.meter != nil {
@@ -255,24 +307,43 @@ func (m *Manager) validateRuntimes() {
 	}
 	m.mu.Unlock()
 	for id, current := range snapshot {
+		started := time.Now()
+		stage := "load_node"
 		ctx, cancel := context.WithTimeout(m.ctx, time.Second)
 		n, err := m.store.LoadNode(ctx, id)
-		if err == nil {
+		valid := err == nil && n.Active && !n.Paused && n.Version == current.version && (n.ExpiresAt == nil || n.ExpiresAt.After(time.Now()))
+		if valid {
 			if lifecycle, ok := m.store.(RuntimeStore); ok {
+				stage = "renew_runtime"
 				err = lifecycle.RenewRuntime(ctx, id, current.version, current.id)
-				if err == nil {
-					select {
-					case current.renew <- struct{}{}:
-					default:
-					}
+				if err == nil && ctx.Err() != nil {
+					err = ctx.Err()
+				}
+				if err == nil && !current.confirmLease(started, time.Now()) {
+					err = ErrBlocked
 				}
 			}
 		}
 		cancel()
+		if m.ctx.Err() != nil {
+			return
+		}
+		if err != nil && !controlPlaneRejected(err) && current.hasLease() && current.leaseValid(time.Now()) && current.runtime.ctx.Err() == nil {
+			if !current.controlDegraded {
+				logControlEvent("wireguard.control_plane_degraded", id, current.version, stage, err, time.Since(started))
+			}
+			current.controlDegraded = true
+			continue
+		}
 		if err != nil || current.runtime.ctx.Err() != nil {
+			logControlEvent("wireguard.runtime_failed", id, current.version, stage, err, time.Since(started))
 			m.Fail(id, current.version)
 		}
-		if err == nil && n.Active && !n.Paused && n.Version == current.version && (n.ExpiresAt == nil || n.ExpiresAt.After(time.Now())) {
+		if err == nil && valid && current.runtime.ctx.Err() == nil {
+			if current.controlDegraded {
+				logControlEvent("wireguard.control_plane_recovered", id, current.version, stage, nil, time.Since(started))
+				current.controlDegraded = false
+			}
 			continue
 		}
 		m.mu.Lock()
@@ -280,30 +351,6 @@ func (m *Manager) validateRuntimes() {
 			m.retireLocked(id)
 		}
 		m.mu.Unlock()
-	}
-}
-
-// Independent of database calls and the manager lock: a stalled control plane
-// stops UDP I/O well before a different process may take over the lease.
-func (n *managedRuntime) leaseWatchdog() {
-	timer := time.NewTimer(10 * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case <-n.runtime.ctx.Done():
-			return
-		case <-n.renew:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(10 * time.Second)
-		case <-timer.C:
-			n.runtime.Close()
-			return
-		}
 	}
 }
 
@@ -327,7 +374,9 @@ func (m *Manager) persistFailure(id, version int64) {
 	}); ok {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_ = store.SetNodePaused(ctx, id, version, true)
+		if err := store.SetNodePaused(ctx, id, version, true); err != nil {
+			logControlEvent("wireguard.pause_persist_failed", id, version, "persist_pause", err, 0)
+		}
 	}
 }
 
