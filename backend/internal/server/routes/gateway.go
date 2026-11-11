@@ -1,17 +1,16 @@
 package routes
 
 import (
-	"errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/egress"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -38,8 +37,9 @@ func RegisterGatewayRoutes(
 		meter = meters[0]
 	}
 	trafficMiddleware := middleware.ServiceTraffic(meter)
-	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
-	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
+	bodyMemoryBudget := pkghttputil.NewBodyMemoryBudget(cfg.Gateway.RequestBodyMemoryBudgetBytes)
+	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize, bodyMemoryBudget)
+	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize, bodyMemoryBudget)
 	requestIDMiddleware := middleware.ClientRequestID()
 	clientRequestID := func(c *gin.Context) {
 		c.Request = c.Request.WithContext(egress.WithScope(c.Request.Context()))
@@ -575,15 +575,10 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 
 		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 		if err != nil {
-			status := http.StatusBadRequest
-			message := "Failed to read request body"
-			var maxErr *http.MaxBytesError
-			if errors.As(err, &maxErr) {
-				status = http.StatusRequestEntityTooLarge
-				message = "Request body is too large"
+			if middleware.RejectRequestBodyReadError(c, "middleware.composite_route", err) {
+				return
 			}
-			c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": message}})
-			c.Abort()
+			middleware.AbortWithRequestBodyReadFailure(c, "middleware.composite_route", err)
 			return
 		}
 
