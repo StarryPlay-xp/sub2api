@@ -33,13 +33,16 @@ func TestUpstream043UpgradePreservesConfiguredState(t *testing.T) {
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
-		if name == "249_add_usage_logs_api_key_cost_index_notx.sql" || name == "250_openai_cache_write_ttl.sql" {
+		if name == "249_add_usage_logs_api_key_cost_index_notx.sql" || name == "250_openai_cache_write_ttl.sql" ||
+			name == "251_group_force_openai_ultrafast.sql" || name == "251_group_usage_rollup_nonblocking_build.sql" ||
+			name == "252_channel_pricing_ultrafast_multiplier.sql" {
 			continue
 		}
 		data, readErr := migrations.FS.ReadFile(name)
 		require.NoError(t, readErr)
 		previous[name] = &fstest.MapFile{Data: data}
 	}
+	require.Len(t, previous, 307, "baseline must match the released migration set")
 	require.NoError(t, applyMigrationsFS(ctx, db, previous))
 	box, err := wgtunnel.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
