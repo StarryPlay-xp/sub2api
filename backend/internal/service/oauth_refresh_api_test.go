@@ -719,7 +719,7 @@ func TestRefreshIfNeeded_OpenAIEnrichmentTimeoutKeepsRotatedCredentials(t *testi
 	oauthService := NewOpenAIOAuthService(nil, client)
 	defer oauthService.Stop()
 	privacyCalls := 0
-	oauthService.SetPrivacyClientFactory(func(string) (*req.Client, error) {
+	oauthService.SetPrivacyClientFactory(func(context.Context, string) (*req.Client, error) {
 		return req.C().WrapRoundTripFunc(func(req.RoundTripper) req.RoundTripFunc {
 			return func(request *req.Request) (*req.Response, error) {
 				privacyCalls++

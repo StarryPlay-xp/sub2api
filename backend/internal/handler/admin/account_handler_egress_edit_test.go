@@ -36,7 +36,7 @@ func TestBulkHandlerResolvesExplicitEgressAuthorization(t *testing.T) {
 	for _, body := range []string{`{"account_ids":[77],"proxy_id":0}`, `{"filters":{"platform":"openai"},"proxy_id":0}`} {
 		t.Run(body, func(t *testing.T) {
 			repo := &bulkEgressHandlerRepo{}
-			svc := service.NewAdminService(nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			svc := service.NewAdminService(nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			gin.SetMode(gin.TestMode)
 			router := gin.New()
