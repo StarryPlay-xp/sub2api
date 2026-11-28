@@ -37,7 +37,7 @@ func TestUserUsageExitIPsUseAuthorizedRows(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &userUsageRepoCapture{listRows: []service.UsageLog{{ID: 1, UserID: 42, AccountID: 7, RequestID: "owned-request"}}}
 	reader := &userExitReaderStub{}
-	h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil)
+	h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil, nil)
 	h.exitReader = reader
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

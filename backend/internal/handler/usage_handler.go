@@ -53,6 +53,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
+	channelService *service.ChannelService
 	exitReader     usageExitReader
 }
 
@@ -60,8 +61,8 @@ type usageExitReader interface {
 	ReadExitSummaries(context.Context, []egress.AttemptQuery) ([]egress.ExitSummary, error)
 }
 
-func NewUsageHandlerWithEgress(usageService *service.UsageService, apiKeyService *service.APIKeyService, opsService *service.OpsService, settingService *service.SettingService, wg *service.WireGuardService) *UsageHandler {
-	h := NewUsageHandler(usageService, apiKeyService, opsService, settingService)
+func NewUsageHandlerWithEgress(usageService *service.UsageService, apiKeyService *service.APIKeyService, opsService *service.OpsService, settingService *service.SettingService, channelService *service.ChannelService, wg *service.WireGuardService) *UsageHandler {
+	h := NewUsageHandler(usageService, apiKeyService, opsService, settingService, channelService)
 	if wg != nil {
 		h.exitReader = wg.Store
 	}
@@ -109,13 +110,49 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	channelService *service.ChannelService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		opsService:     opsService,
 		settingService: settingService,
+		channelService: channelService,
 	}
+}
+
+// userUsageLogs 将使用记录转换为普通用户 DTO。对于所属渠道开启了
+// "向用户显示实际响应模型"的记录，额外填充 response_model。
+// 渠道开关一次性从渠道内存缓存中批量读取，不产生额外数据库查询。
+func (h *UsageHandler) userUsageLogs(c *gin.Context, records []service.UsageLog) []dto.UsageLog {
+	var exposed map[int64]bool
+	if h.channelService != nil && len(records) > 0 {
+		seen := make(map[int64]struct{}, 2)
+		ids := make([]int64, 0, 2)
+		for i := range records {
+			if records[i].ChannelID == nil {
+				continue
+			}
+			id := *records[i].ChannelID
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+		exposed = h.channelService.ResponseModelExposedChannels(c.Request.Context(), ids)
+	}
+
+	acceptLanguage := c.GetHeader("Accept-Language")
+	out := make([]dto.UsageLog, 0, len(records))
+	for i := range records {
+		item := dto.UsageLogFromService(&records[i]).Localized(acceptLanguage)
+		if records[i].ChannelID != nil && exposed[*records[i].ChannelID] {
+			item.ApplyResponseModel(&records[i])
+		}
+		out = append(out, *item)
+	}
+	return out
 }
 
 func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) (*userUsageFilters, bool) {
@@ -303,10 +340,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
-	out := make([]dto.UsageLog, 0, len(records))
-	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
-	}
+	out := h.userUsageLogs(c, records)
 	h.fillExitIPs(c.Request.Context(), parsed.Filters.UserID, records, out)
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -452,7 +486,7 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	out := []dto.UsageLog{*dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language"))}
+	out := h.userUsageLogs(c, []service.UsageLog{*record})
 	h.fillExitIPs(c.Request.Context(), subject.UserID, []service.UsageLog{*record}, out)
 	response.Success(c, out[0])
 }

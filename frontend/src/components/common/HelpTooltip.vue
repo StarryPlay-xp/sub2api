@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, nextTick } from 'vue'
+import { getTooltipPosition } from '@/utils/floatingPanel'
 
 const props = withDefaults(defineProps<{
   content?: string
@@ -14,9 +15,9 @@ const show = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('trigger')
 const tooltipRef = useTemplateRef<HTMLElement>('tooltip')
 const tooltipStyle = ref({ top: '0px', left: '0px' })
-const placement = ref<'top' | 'bottom'>('top')
-// 提示框贴近视口左右边缘被收回时，箭头仍指向触发图标。
-const arrowOffset = ref(0)
+// 上方放不下时翻到图标下方；箭头始终对准图标中心
+const placeBelow = ref(false)
+const arrowLeft = ref('50%')
 
 function openTooltip() {
   show.value = true
@@ -79,30 +80,23 @@ function onViewportChange() {
   updatePosition()
 }
 
-const GAP = 8
-const EDGE = 8
-
 // 提示框是 fixed 定位，直接使用视口坐标；叠加页面滚动距离会让滚动后的提示偏离图标。
 // 上方放不下时改放到图标下方，并把左右位置限制在视口内。
 function updatePosition() {
   const el = triggerRef.value
-  if (!el) return
+  const tip = tooltipRef.value
+  if (!el || !tip) return
   const rect = el.getBoundingClientRect()
-  const height = tooltipRef.value?.offsetHeight ?? 0
-  const width = tooltipRef.value?.offsetWidth ?? 0
-  const fitsAbove = rect.top - GAP - height >= EDGE
-  const fitsBelow = rect.bottom + GAP + height <= window.innerHeight - EDGE
-  placement.value = !fitsAbove && fitsBelow ? 'bottom' : 'top'
-  const center = rect.left + rect.width / 2
-  const half = width / 2
-  const left = width && window.innerWidth > width + EDGE * 2
-    ? Math.min(Math.max(center, EDGE + half), window.innerWidth - EDGE - half)
-    : center
-  arrowOffset.value = center - left
-  tooltipStyle.value = {
-    top: `${placement.value === 'top' ? rect.top - GAP : rect.bottom + GAP}px`,
-    left: `${left}px`,
-  }
+  const { width, height } = tip.getBoundingClientRect()
+  const { left, top } = getTooltipPosition(
+    rect,
+    { width, height },
+    document.documentElement.clientWidth || window.innerWidth,
+    window.innerHeight
+  )
+  placeBelow.value = top >= rect.bottom
+  arrowLeft.value = `${rect.left + rect.width / 2 - left}px`
+  tooltipStyle.value = { top: `${top}px`, left: `${left}px` }
 }
 
 onMounted(() => {
@@ -147,18 +141,18 @@ onBeforeUnmount(() => {
 
     <!-- Teleport to body to escape modal overflow clipping -->
     <Teleport to="body">
-      <!-- before: 伪元素向下延伸一段透明区域，盖住提示框与触发图标之间的空隙，让指针能连续移入提示框。 -->
+      <!-- before: 伪元素朝触发图标延伸一段透明区域，盖住提示框与图标之间的空隙，让指针能连续移入提示框。 -->
       <div
         ref="tooltip"
         v-show="show"
         role="tooltip"
         :class="[
-          'fixed z-[99999] -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 selection:bg-primary-200 selection:text-gray-900 before:absolute before:inset-x-0 before:h-3 dark:bg-gray-800 dark:selection:bg-primary-200 dark:selection:text-gray-900',
-          placement === 'top' ? '-translate-y-full before:top-full' : 'before:bottom-full',
+          'fixed z-[99999] rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 selection:bg-primary-200 selection:text-gray-900 before:absolute before:inset-x-0 before:h-3 dark:bg-gray-800 dark:selection:bg-primary-200 dark:selection:text-gray-900',
+          placeBelow ? 'before:bottom-full' : 'before:top-full',
           props.widthClass,
         ]"
-        :data-placement="placement"
-        :style="{ top: tooltipStyle.top, left: tooltipStyle.left }"
+        :data-placement="placeBelow ? 'bottom' : 'top'"
+        :style="tooltipStyle"
         @mouseleave="onTooltipLeave"
       >
         <button
@@ -174,11 +168,8 @@ onBeforeUnmount(() => {
         </button>
         <slot>{{ content }}</slot>
         <div
-          :class="[
-            'absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800',
-            placement === 'top' ? '-bottom-1' : '-top-1',
-          ]"
-          :style="{ left: `calc(50% + ${arrowOffset}px)` }"
+          :class="['absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800', placeBelow ? '-top-1' : '-bottom-1']"
+          :style="{ left: arrowLeft }"
         ></div>
       </div>
     </Teleport>
